@@ -1,0 +1,120 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=6
+// EMA 9/45/200 Trend Strategy — Breakout or Pullback entry
+// Rules:
+//   * Trend filter: EMA9 > EMA45 > EMA200; the first N bars are skipped while the EMAs warm up.
+//   * Breakout: EMA9 crosses above EMA45 -> buy-stop order at the high of the signal bar.
+//   * Pullback: after the cross, the signal bar is either the first bar that touches EMA45 but closes above it,
+//     or the first bar that closes back above EMA45 after closing below it. Buy-stop at the high of that bar.
+//   * A pending buy order is cancelled if EMA9 crosses back below EMA45 before it fills; one trade per cross.
+//   * Stop loss = fill price - k x ATR(14) (ATR of the bar before entry).
+//   * Exit: when EMA9 crosses below EMA45, a sell-stop is placed at the low of that bar;
+//     it is cancelled if EMA9 crosses back above EMA45 before it fills.
+strategy("EMA 9/45/200 Trend Strategy [Breakout / Pullback]", overlay = true, initial_capital = 1000, currency = currency.USD,
+         pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.04, slippage = 2,
+         default_qty_type = strategy.fixed, default_qty_value = 1)
+
+// ---------- Inputs ----------
+mode       = input.string("Breakout", "Entry type", options = ["Breakout", "Pullback"])
+atrMult    = input.float(2.5, "Stop loss = k x ATR(14)", minval = 0.5, step = 0.5)
+riskPct    = input.float(1.0, "Risk per trade (% of equity)", minval = 0.1, step = 0.1)
+fastLen    = input.int(9, "Fast EMA", minval = 1)
+slowLen    = input.int(45, "Slow EMA", minval = 2)
+trendLen   = input.int(200, "Trend EMA", minval = 2)
+warmupBars = input.int(200, "EMA warm-up bars (no trades)", minval = 0)
+startDate  = input.time(timestamp("2021-01-01T00:00:00"), "Trade from date")
+
+// ---------- Indicators (EMA seeded with the first price, equivalent to pandas ewm(adjust=False)) ----------
+emaSeed(float src, int len) =>
+    float alpha = 2.0 / (len + 1)
+    var float e = na
+    e := na(e) ? src : alpha * src + (1 - alpha) * e
+    e
+
+e9   = emaSeed(close, fastLen)
+e45  = emaSeed(close, slowLen)
+e200 = emaSeed(close, trendLen)
+atr  = emaSeed(ta.tr(true), 14)
+
+up       = e9 > e45
+crossUp  = up and not up[1]
+crossDn  = not up and up[1]
+aligned  = e9 > e45 and e45 > e200 and bar_index >= warmupBars and time >= startDate
+
+// ---------- State ----------
+var float pending     = na     // pending buy-stop level (high of the signal bar)
+var bool  waiting     = false  // Pullback: waiting for price to come back to the slow EMA
+var bool  below       = false  // Pullback: price has closed below the slow EMA
+var float exitLevel   = na     // pending sell-stop level (low of the bearish cross bar)
+var float slDist      = na     // stop distance = k x ATR of the bar before entry
+var float slPrice     = na
+var int   tradeCount  = 0
+
+int  nowCount = strategy.opentrades + strategy.closedtrades
+bool filled   = nowCount > tradeCount   // a new entry filled on this bar
+tradeCount   := nowCount
+bool flat     = strategy.position_size == 0
+
+if filled
+    // entry filled (including fill + stop on the same bar): clear the pending state
+    pending := na
+    waiting := false
+    below   := false
+    if not flat
+        slPrice := strategy.position_avg_price - slDist
+
+if flat
+    exitLevel := na
+    if mode == "Breakout"
+        if not na(pending) and crossDn
+            pending := na                       // trend reversed before the breakout -> cancel
+        if crossUp and aligned
+            pending := high
+    else
+        if crossUp and aligned
+            waiting := true
+            pending := na
+            below   := false
+        if waiting
+            if crossDn
+                waiting := false
+                pending := na
+                below   := false
+            else if not filled
+                if close < e45
+                    below   := true             // closed below the slow EMA -> wait for the reclaim bar
+                    pending := na
+                else if below and close > e45 and up and aligned
+                    pending := high             // first close back above the slow EMA
+                    below   := false
+                else if not below and na(pending) and low <= e45 and up and aligned
+                    pending := high             // touched the slow EMA and closed above it
+else
+    if not na(exitLevel) and crossUp
+        exitLevel := na                         // EMA9 crossed back up -> cancel the pending exit
+    if crossDn
+        exitLevel := low
+
+// ---------- Orders ----------
+bool canEnter = flat and not na(pending) and aligned and (mode == "Breakout" or up)
+if canEnter
+    slDist := atrMult * atr
+    float qty = strategy.equity * riskPct / 100 / slDist
+    strategy.entry("Long", strategy.long, qty = qty, stop = pending)
+    strategy.exit("Exit", from_entry = "Long", loss = slDist / syminfo.mintick)   // stop from the actual fill price, active on the entry bar
+else
+    strategy.cancel("Long")
+
+if not flat
+    float stopLvl = na(exitLevel) ? slPrice : math.max(slPrice, exitLevel)
+    strategy.exit("Exit", from_entry = "Long", stop = stopLvl)
+
+// ---------- Plots ----------
+plot(e9, "Fast EMA", color = color.new(color.aqua, 0))
+plot(e45, "Slow EMA", color = color.new(color.orange, 0), linewidth = 2)
+plot(e200, "Trend EMA", color = color.new(color.gray, 0), linewidth = 2)
+plot(canEnter ? pending : na, "Pending buy level", color = color.green, style = plot.style_linebr)
+plot(not flat ? slPrice : na, "Stop loss", color = color.red, style = plot.style_linebr)
+plot(not flat ? exitLevel : na, "Pending exit level", color = color.fuchsia, style = plot.style_linebr)
+plotshape(crossUp and aligned, "Bullish cross (trend aligned)", shape.triangleup, location.belowbar, color.green, size = size.tiny)
+plotshape(crossDn, "Bearish cross", shape.triangledown, location.abovebar, color.red, size = size.tiny)

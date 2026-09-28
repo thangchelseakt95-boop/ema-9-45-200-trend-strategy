@@ -1,0 +1,124 @@
+//@version=6
+// EMA9 / EMA45 / EMA200 — Breakout hoặc Pullback V5 (chuyển từ backtest Python của dự án btc-ema-backtest-project)
+// Luật (xem README.md của dự án):
+//   * Lọc xu hướng: EMA9 > EMA45 > EMA200, bỏ qua 200 nến đầu (làm nóng EMA).
+//   * Breakout: EMA9 cắt lên EMA45 -> lệnh chờ mua (stop) ở đỉnh nến tín hiệu.
+//   * Pullback V5: sau khi cắt lên, nến tín hiệu = nến chạm EMA45 nhưng đóng cửa trên EMA45,
+//     hoặc nến đầu tiên đóng cửa trở lại trên EMA45 sau khi đã đóng cửa dưới EMA45; lệnh chờ ở đỉnh nến đó.
+//   * Lệnh chờ mua tự hủy nếu EMA9 cắt xuống EMA45 trước khi khớp; mỗi lần cắt lên chỉ vào tối đa 1 lệnh.
+//   * SL = giá vào - k x ATR(14) (ATR của nến ngay trước nến vào lệnh).
+//   * Thoát: EMA9 cắt xuống EMA45 -> lệnh chờ bán ở đáy nến cắt xuống; hủy nếu EMA9 cắt lên lại trước khi khớp.
+// Khác biệt nhỏ so với backtest Python:
+//   * Khi SL và mức thoát breakdown cùng bị chạm trong một nến, script thoát ở mức cao hơn (mức giá chạm trước),
+//     còn backtest Python ưu tiên SL.
+//   * SL chạm ngay trong nến vào lệnh do bộ giả lập của TradingView quyết định theo OHLC (hoặc Bar Magnifier nếu bật),
+//     không phải giả định bất lợi / nến H1 như backtest.
+//   * TradingView chỉ tải một số nến lịch sử giới hạn, nên điểm bắt đầu EMA và kết quả có thể lệch với backtest.
+strategy("EMA9/45/200 Breakout & Pullback V5", overlay = true, initial_capital = 1000, currency = currency.USD,
+         pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.04,
+         default_qty_type = strategy.fixed, default_qty_value = 1)
+
+// ---------- Inputs ----------
+mode       = input.string("Breakout", "Kiểu vào lệnh", options = ["Breakout", "Pullback V5"])
+atrMult    = input.float(2.5, "SL = k x ATR(14)", minval = 0.5, step = 0.5, tooltip = "Khuyến nghị: BTC H1 Breakout 2.5; vàng H4 Breakout 2.0-3.5 hoặc Pullback V5 2.0-2.5")
+riskPct    = input.float(1.0, "Rủi ro mỗi lệnh (% vốn)", minval = 0.1, step = 0.1)
+fastLen    = input.int(9, "EMA nhanh", minval = 1)
+slowLen    = input.int(45, "EMA chậm", minval = 2)
+trendLen   = input.int(200, "EMA xu hướng", minval = 2)
+warmupBars = input.int(200, "Số nến làm nóng EMA", minval = 0)
+startDate  = input.time(timestamp("2021-01-01T00:00:00"), "Chỉ vào lệnh từ ngày")
+
+// ---------- Chỉ báo (EMA khởi tạo từ giá đầu tiên, giống pandas ewm(adjust=False)) ----------
+emaSeed(float src, int len) =>
+    float alpha = 2.0 / (len + 1)
+    var float e = na
+    e := na(e) ? src : alpha * src + (1 - alpha) * e
+    e
+
+e9   = emaSeed(close, fastLen)
+e45  = emaSeed(close, slowLen)
+e200 = emaSeed(close, trendLen)
+atr  = emaSeed(ta.tr(true), 14)
+
+up       = e9 > e45
+crossUp  = up and not up[1]
+crossDn  = not up and up[1]
+aligned  = e9 > e45 and e45 > e200 and bar_index >= warmupBars and time >= startDate
+
+// ---------- Trạng thái ----------
+var float pending     = na     // mức chờ mua (đỉnh nến tín hiệu)
+var bool  waiting     = false  // Pullback: đang chờ giá hồi về EMA45
+var bool  below       = false  // Pullback: giá đã đóng cửa dưới EMA45
+var float exitLevel   = na     // mức chờ thoát (đáy nến cắt xuống)
+var float slDist      = na     // khoảng SL = k x ATR của nến trước nến vào lệnh
+var float slPrice     = na
+var int   tradeCount  = 0
+
+int  nowCount = strategy.opentrades + strategy.closedtrades
+bool filled   = nowCount > tradeCount   // có lệnh mới được khớp trong nến này
+tradeCount   := nowCount
+bool flat     = strategy.position_size == 0
+
+if filled
+    // lệnh vừa khớp (kể cả khớp rồi bị SL ngay trong nến): xóa trạng thái chờ
+    pending := na
+    waiting := false
+    below   := false
+    if not flat
+        slPrice := strategy.position_avg_price - slDist
+
+if flat
+    exitLevel := na
+    if mode == "Breakout"
+        if not na(pending) and crossDn
+            pending := na                       // EMA đảo chiều trước khi breakout -> hủy
+        if crossUp and aligned
+            pending := high
+    else
+        if crossUp and aligned
+            waiting := true
+            pending := na
+            below   := false
+        if waiting
+            if crossDn
+                waiting := false
+                pending := na
+                below   := false
+            else if not filled
+                if close < e45
+                    below   := true             // cắt xuống -> đợi nến cắt lại
+                    pending := na
+                else if below and close > e45 and up and aligned
+                    pending := high             // nến đầu tiên đóng cửa trở lại trên EMA45
+                    below   := false
+                else if not below and na(pending) and low <= e45 and up and aligned
+                    pending := high             // chạm EMA45 rồi đóng cửa trên
+else
+    if not na(exitLevel) and crossUp
+        exitLevel := na                         // EMA9 cắt lên lại -> hủy lệnh chờ thoát
+    if crossDn
+        exitLevel := low
+
+// ---------- Lệnh ----------
+bool canEnter = flat and not na(pending) and aligned and (mode == "Breakout" or up)
+if canEnter
+    slDist := atrMult * atr
+    float qty = strategy.equity * riskPct / 100 / slDist
+    strategy.entry("Long", strategy.long, qty = qty, stop = pending)
+    strategy.exit("Exit", from_entry = "Long", loss = slDist / syminfo.mintick)   // SL theo giá khớp thật, có hiệu lực ngay trong nến vào lệnh
+else
+    strategy.cancel("Long")
+
+if not flat
+    float stopLvl = na(exitLevel) ? slPrice : math.max(slPrice, exitLevel)
+    strategy.exit("Exit", from_entry = "Long", stop = stopLvl)
+
+// ---------- Hiển thị ----------
+plot(e9, "EMA9", color = color.new(color.aqua, 0))
+plot(e45, "EMA45", color = color.new(color.orange, 0), linewidth = 2)
+plot(e200, "EMA200", color = color.new(color.gray, 0), linewidth = 2)
+plot(canEnter ? pending : na, "Mức chờ mua", color = color.green, style = plot.style_linebr)
+plot(not flat ? slPrice : na, "Stop loss", color = color.red, style = plot.style_linebr)
+plot(not flat ? exitLevel : na, "Mức chờ thoát", color = color.fuchsia, style = plot.style_linebr)
+plotshape(crossUp and aligned, "Tín hiệu cắt lên", shape.triangleup, location.belowbar, color.green, size = size.tiny)
+plotshape(crossDn, "EMA9 cắt xuống", shape.triangledown, location.abovebar, color.red, size = size.tiny)
