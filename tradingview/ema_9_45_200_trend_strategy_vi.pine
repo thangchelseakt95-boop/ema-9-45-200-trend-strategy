@@ -64,8 +64,7 @@ if filled
     pending := na
     waiting := false
     below   := false
-    if not flat
-        slPrice := strategy.position_avg_price - slDist
+    slPrice := (not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)) - slDist
 
 if flat
     exitLevel := na
@@ -117,15 +116,15 @@ if not flat
 plot(e9, "EMA9", color = color.new(color.aqua, 0))
 plot(e45, "EMA45", color = color.new(color.orange, 0), linewidth = 2)
 plot(e200, "EMA200", color = color.new(color.gray, 0), linewidth = 2)
-plot(canEnter ? pending : na, "Mức chờ mua", color = color.green, style = plot.style_linebr)
-plot(not flat ? slPrice : na, "Stop loss", color = color.red, style = plot.style_linebr)
-plot(not flat ? exitLevel : na, "Mức chờ thoát", color = color.fuchsia, style = plot.style_linebr)
+plot(canEnter ? pending : na, "Mức chờ mua", color = color.green, style = plot.style_circles, linewidth = 2)
+plot(not flat or filled ? slPrice : na, "Stop loss", color = color.red, style = plot.style_circles, linewidth = 2)
+plot(not flat ? exitLevel : na, "Mức chờ thoát", color = color.fuchsia, style = plot.style_circles, linewidth = 2)
 plotshape(crossUp and aligned, "Tín hiệu cắt lên", shape.triangleup, location.belowbar, color.green, size = size.tiny)
 plotshape(crossDn, "EMA9 cắt xuống", shape.triangledown, location.abovebar, color.red, size = size.tiny)
 
 // ---------- SL dự kiến và các mức đang hiệu lực ----------
 float projSL = canEnter ? pending - atrMult * atr : na   // SL nếu lệnh chờ mua khớp đúng ở mức chờ
-plot(projSL, "SL dự kiến", color = color.new(color.red, 50), style = plot.style_linebr)
+plot(projSL, "SL dự kiến", color = color.new(color.red, 50), style = plot.style_circles, linewidth = 2)
 plot(atr, "ATR(14)", display = display.data_window)
 plot(atrMult * atr, "Khoảng SL (k x ATR)", display = display.data_window)
 

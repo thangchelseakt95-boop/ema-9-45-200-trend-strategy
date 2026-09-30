@@ -60,8 +60,7 @@ if filled
     pending := na
     waiting := false
     below   := false
-    if not flat
-        slPrice := strategy.position_avg_price - slDist
+    slPrice := (not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)) - slDist
 
 if flat
     exitLevel := na
@@ -113,15 +112,15 @@ if not flat
 plot(e9, "Fast EMA", color = color.new(color.aqua, 0))
 plot(e45, "Slow EMA", color = color.new(color.orange, 0), linewidth = 2)
 plot(e200, "Trend EMA", color = color.new(color.gray, 0), linewidth = 2)
-plot(canEnter ? pending : na, "Pending buy level", color = color.green, style = plot.style_linebr)
-plot(not flat ? slPrice : na, "Stop loss", color = color.red, style = plot.style_linebr)
-plot(not flat ? exitLevel : na, "Pending exit level", color = color.fuchsia, style = plot.style_linebr)
+plot(canEnter ? pending : na, "Pending buy level", color = color.green, style = plot.style_circles, linewidth = 2)
+plot(not flat or filled ? slPrice : na, "Stop loss", color = color.red, style = plot.style_circles, linewidth = 2)
+plot(not flat ? exitLevel : na, "Pending exit level", color = color.fuchsia, style = plot.style_circles, linewidth = 2)
 plotshape(crossUp and aligned, "Bullish cross (trend aligned)", shape.triangleup, location.belowbar, color.green, size = size.tiny)
 plotshape(crossDn, "Bearish cross", shape.triangledown, location.abovebar, color.red, size = size.tiny)
 
 // ---------- Projected stop loss and current levels ----------
 float projSL = canEnter ? pending - atrMult * atr : na   // stop loss if the buy-stop fills exactly at the pending level
-plot(projSL, "Projected stop loss", color = color.new(color.red, 50), style = plot.style_linebr)
+plot(projSL, "Projected stop loss", color = color.new(color.red, 50), style = plot.style_circles, linewidth = 2)
 plot(atr, "ATR(14)", display = display.data_window)
 plot(atrMult * atr, "Stop distance (k x ATR)", display = display.data_window)
 
