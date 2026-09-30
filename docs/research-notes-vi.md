@@ -504,7 +504,7 @@ File `tradingview/ema_9_45_200_trend_strategy_vi.pine` (bản tiếng Anh: `ema_
 | Số nến làm nóng EMA | 200 | |
 | Chỉ vào lệnh từ ngày | 2021-01-01 | |
 
-Strategy dùng vốn khởi đầu $1,000 và phí 0.04%/chiều. Trên biểu đồ hiển thị 3 đường EMA, mức chờ mua, stop loss, mức chờ thoát và dấu tín hiệu cắt lên/cắt xuống.
+Strategy dùng vốn khởi đầu $1,000 và phí 0.04%/chiều. Trên biểu đồ hiển thị 3 đường EMA, mức chờ mua (xanh lá), **SL dự kiến** (đỏ nhạt = mức chờ mua − k×ATR, hiện ngay khi có lệnh chờ), stop loss (đỏ, khi đang giữ lệnh), mức chờ thoát (tím hồng) và dấu tín hiệu cắt lên/cắt xuống. Ở nến cuối cùng, các mức đang có hiệu lực được vẽ thêm bằng đường nét đứt kéo sang phải kèm nhãn giá (vì `plot()` cần 2 nến mới vẽ được đường, nên mức mới xuất hiện ở nến cuối sẽ không hiện nếu chỉ dùng `plot()`). Giá trị ATR(14) và khoảng SL (k×ATR) xem trong Data Window. Lưu ý: ATR của script là EMA của true range (giống backtest Python), khác chỉ báo ATR mặc định của TradingView (RMA/Wilder), nên tự nhân ATR của TradingView × 2.5 sẽ ra số hơi khác.
 
 **Cách dùng:** mở TradingView → Pine Editor → dán nội dung file → **Add to chart** → xem tab **Strategy Tester**. Script đã được lưu riêng tư trong tài khoản TradingView của chủ dự án với tên **"EMA9/45/200 Breakout & Pullback V5"** (mở lại trong Pine Editor → Open, hoặc Indicators → My scripts). Có thể tạo cảnh báo bằng nút **Add alert** trong Strategy Tester.
 

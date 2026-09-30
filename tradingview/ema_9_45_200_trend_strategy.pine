@@ -118,3 +118,42 @@ plot(not flat ? slPrice : na, "Stop loss", color = color.red, style = plot.style
 plot(not flat ? exitLevel : na, "Pending exit level", color = color.fuchsia, style = plot.style_linebr)
 plotshape(crossUp and aligned, "Bullish cross (trend aligned)", shape.triangleup, location.belowbar, color.green, size = size.tiny)
 plotshape(crossDn, "Bearish cross", shape.triangledown, location.abovebar, color.red, size = size.tiny)
+
+// ---------- Projected stop loss and current levels ----------
+float projSL = canEnter ? pending - atrMult * atr : na   // stop loss if the buy-stop fills exactly at the pending level
+plot(projSL, "Projected stop loss", color = color.new(color.red, 50), style = plot.style_linebr)
+plot(atr, "ATR(14)", display = display.data_window)
+plot(atrMult * atr, "Stop distance (k x ATR)", display = display.data_window)
+
+// plot() needs two bars to draw a line, so the levels valid for the next bar are also drawn from the last bar to the right
+drawLevel(line oldLn, label oldLb, float price, color col, string txt) =>
+    line.delete(oldLn)
+    label.delete(oldLb)
+    line  ln = na
+    label lb = na
+    if not na(price)
+        ln := line.new(bar_index, price, bar_index + 1, price, color = col, style = line.style_dashed, width = 2, extend = extend.right)
+        lb := label.new(bar_index + 2, price, txt + " " + str.tostring(price, format.mintick), style = label.style_label_left, color = color.new(col, 85), textcolor = col, size = size.small)
+    [ln, lb]
+
+var line  lnBuy  = na
+var label lbBuy  = na
+var line  lnProj = na
+var label lbProj = na
+var line  lnSL   = na
+var label lbSL   = na
+var line  lnExit = na
+var label lbExit = na
+if barstate.islast
+    [l1, b1] = drawLevel(lnBuy, lbBuy, canEnter ? pending : na, color.green, "Buy stop")
+    lnBuy := l1
+    lbBuy := b1
+    [l2, b2] = drawLevel(lnProj, lbProj, projSL, color.new(color.red, 30), "Projected SL")
+    lnProj := l2
+    lbProj := b2
+    [l3, b3] = drawLevel(lnSL, lbSL, not flat ? slPrice : na, color.red, "Stop loss")
+    lnSL := l3
+    lbSL := b3
+    [l4, b4] = drawLevel(lnExit, lbExit, not flat ? exitLevel : na, color.fuchsia, "Exit stop")
+    lnExit := l4
+    lbExit := b4
