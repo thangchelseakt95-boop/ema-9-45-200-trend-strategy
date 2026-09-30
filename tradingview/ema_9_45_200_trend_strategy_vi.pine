@@ -129,7 +129,8 @@ plot(projSL, "SL dự kiến", color = color.new(color.red, 50), style = plot.st
 plot(atr, "ATR(14)", display = display.data_window)
 plot(atrMult * atr, "Khoảng SL (k x ATR)", display = display.data_window)
 
-// plot() cần 2 nến mới vẽ được đường, nên các mức cho nến tiếp theo được vẽ thêm từ nến cuối kéo sang phải
+// plot() cần 2 nến mới vẽ được đường, nên các mức cho nến tiếp theo được vẽ thêm từ nến đã đóng mới nhất kéo sang phải
+// (vẽ lại ở mỗi nến đã đóng: strategy chỉ chạy khi nến đóng nên barstate.islast không đáng tin ở đây)
 drawLevel(line oldLn, label oldLb, float price, color col, string txt) =>
     line.delete(oldLn)
     label.delete(oldLb)
@@ -148,7 +149,7 @@ var line  lnSL   = na
 var label lbSL   = na
 var line  lnExit = na
 var label lbExit = na
-if barstate.islast
+if barstate.isconfirmed
     [l1, b1] = drawLevel(lnBuy, lbBuy, canEnter ? pending : na, color.green, "Chờ mua")
     lnBuy := l1
     lbBuy := b1

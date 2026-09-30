@@ -125,7 +125,8 @@ plot(projSL, "Projected stop loss", color = color.new(color.red, 50), style = pl
 plot(atr, "ATR(14)", display = display.data_window)
 plot(atrMult * atr, "Stop distance (k x ATR)", display = display.data_window)
 
-// plot() needs two bars to draw a line, so the levels valid for the next bar are also drawn from the last bar to the right
+// plot() needs two bars to draw a line, so the levels valid for the next bar are also drawn from the latest closed bar to the right
+// (redrawn on every confirmed bar: strategies run on bar close, so barstate.islast is not reliable here)
 drawLevel(line oldLn, label oldLb, float price, color col, string txt) =>
     line.delete(oldLn)
     label.delete(oldLb)
@@ -144,7 +145,7 @@ var line  lnSL   = na
 var label lbSL   = na
 var line  lnExit = na
 var label lbExit = na
-if barstate.islast
+if barstate.isconfirmed
     [l1, b1] = drawLevel(lnBuy, lbBuy, canEnter ? pending : na, color.green, "Buy stop")
     lnBuy := l1
     lbBuy := b1
