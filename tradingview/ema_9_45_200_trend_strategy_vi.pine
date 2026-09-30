@@ -162,3 +162,21 @@ if barstate.isconfirmed
     [l4, b4] = drawLevel(lnExit, lbExit, not flat ? exitLevel : na, color.fuchsia, "Chờ thoát")
     lnExit := l4
     lbExit := b4
+
+// ---------- Cảnh báo: tạo alert trên strategy này và chọn "alert() function calls only" ----------
+string tag = syminfo.ticker + " " + timeframe.period + ": "
+fmt(float x) => str.tostring(x, format.mintick)
+if canEnter and (not canEnter[1] or pending != pending[1])
+    alert(tag + "CHỜ MUA " + fmt(pending) + " | SL dự kiến " + fmt(projSL) + " | khoảng SL " + fmt(atrMult * atr) + " (" + str.tostring(atrMult) + " x ATR)", alert.freq_once_per_bar_close)
+if canEnter[1] and not canEnter and not filled
+    alert(tag + "Hủy lệnh chờ mua " + fmt(pending[1]), alert.freq_once_per_bar_close)
+if filled and not flat
+    alert(tag + "ĐÃ KHỚP MUA " + fmt(strategy.position_avg_price) + " | stop loss " + fmt(slPrice) + " | khoảng SL " + fmt(slDist), alert.freq_once_per_bar_close)
+if filled and flat
+    alert(tag + "Lệnh mua khớp rồi chạm SL ngay trong nến", alert.freq_once_per_bar_close)
+if not flat and crossDn
+    alert(tag + "CHỜ THOÁT " + fmt(exitLevel) + " | stop loss " + fmt(slPrice) + " | mức dừng hiệu lực " + fmt(math.max(slPrice, exitLevel)), alert.freq_once_per_bar_close)
+if not flat and crossUp and not na(exitLevel[1])
+    alert(tag + "Hủy lệnh chờ thoát (EMA9 cắt lên lại EMA45) | stop loss " + fmt(slPrice), alert.freq_once_per_bar_close)
+if flat and not filled and strategy.closedtrades > strategy.closedtrades[1]
+    alert(tag + "ĐÃ ĐÓNG LỆNH ở " + fmt(strategy.closedtrades.exit_price(strategy.closedtrades - 1)), alert.freq_once_per_bar_close)

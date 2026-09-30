@@ -158,3 +158,21 @@ if barstate.isconfirmed
     [l4, b4] = drawLevel(lnExit, lbExit, not flat ? exitLevel : na, color.fuchsia, "Exit stop")
     lnExit := l4
     lbExit := b4
+
+// ---------- Alerts: create an alert on this strategy and choose "alert() function calls only" ----------
+string tag = syminfo.ticker + " " + timeframe.period + ": "
+fmt(float x) => str.tostring(x, format.mintick)
+if canEnter and (not canEnter[1] or pending != pending[1])
+    alert(tag + "BUY STOP " + fmt(pending) + " | projected SL " + fmt(projSL) + " | SL distance " + fmt(atrMult * atr) + " (" + str.tostring(atrMult) + " x ATR)", alert.freq_once_per_bar_close)
+if canEnter[1] and not canEnter and not filled
+    alert(tag + "Buy stop " + fmt(pending[1]) + " cancelled", alert.freq_once_per_bar_close)
+if filled and not flat
+    alert(tag + "LONG FILLED at " + fmt(strategy.position_avg_price) + " | stop loss " + fmt(slPrice) + " | SL distance " + fmt(slDist), alert.freq_once_per_bar_close)
+if filled and flat
+    alert(tag + "Long filled and stopped out on the same bar", alert.freq_once_per_bar_close)
+if not flat and crossDn
+    alert(tag + "EXIT STOP " + fmt(exitLevel) + " | stop loss " + fmt(slPrice) + " | active stop " + fmt(math.max(slPrice, exitLevel)), alert.freq_once_per_bar_close)
+if not flat and crossUp and not na(exitLevel[1])
+    alert(tag + "Exit stop cancelled (EMA9 back above EMA45) | stop loss " + fmt(slPrice), alert.freq_once_per_bar_close)
+if flat and not filled and strategy.closedtrades > strategy.closedtrades[1]
+    alert(tag + "POSITION CLOSED at " + fmt(strategy.closedtrades.exit_price(strategy.closedtrades - 1)), alert.freq_once_per_bar_close)

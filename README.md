@@ -73,6 +73,8 @@ Defaults: initial capital 1,000 USD, commission 0.04% per side, slippage 2 ticks
 
 On the chart: green = pending buy-stop, light red = **projected stop loss** (buy-stop − k × ATR, shown as soon as an order is pending), red = active stop loss, fuchsia = pending exit level. On the last bar the active levels are also drawn as dashed lines extending right with price labels. ATR(14) and the stop distance are shown in the Data Window. The script's ATR is an EMA of the true range (same as the Python backtest), so it differs slightly from TradingView's built-in ATR indicator (RMA / Wilder).
 
+**Alerts:** at bar close the script fires `alert()` messages for: new pending buy-stop (with projected SL and SL distance), buy-stop cancelled, long filled (with stop loss), filled and stopped out on the same bar, new exit stop (with the active stop), exit stop cancelled, and position closed. To enable: on the chart click **Alert** → Condition: this strategy → **"alert() function calls only"** → choose notifications → Create. One alert covers all events. Re-create the alert after editing the script (alerts run on the script version they were created with). The script does not place orders on your exchange.
+
 TradingView results will differ from the Python backtest: TradingView loads a limited number of historical bars (depending on your plan), its broker emulator decides same-bar stop fills from OHLC (or Bar Magnifier), and if the stop loss and the exit level are both hit in one bar the script fills the higher level. On BTCUSDT 1H (Jan–Sep 2026) the script gave 20 trades / PF 1.26 versus 24 trades / PF 1.33 in Python.
 
 ## Python backtest
