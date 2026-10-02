@@ -506,9 +506,32 @@ File `tradingview/ema_9_45_200_trend_strategy_vi.pine` (bản tiếng Anh: `ema_
 
 Strategy dùng vốn khởi đầu $1,000 và phí 0.04%/chiều. Trên biểu đồ hiển thị 3 đường EMA, mức chờ mua (xanh lá), **SL dự kiến** (đỏ nhạt = mức chờ mua − k×ATR, hiện ngay khi có lệnh chờ), stop loss (đỏ, khi đang giữ lệnh), mức chờ thoát (tím hồng) và dấu tín hiệu cắt lên/cắt xuống. Các mức được vẽ bằng chấm tròn, nên mức chỉ tồn tại 1 nến (lệnh chờ khớp ngay nến sau, hoặc khớp rồi chạm SL ngay trong nến) vẫn nhìn thấy; trường hợp khớp rồi chạm SL cùng nến vẫn có chấm SL ở nến đó. Ở nến cuối cùng, các mức đang có hiệu lực được vẽ thêm bằng đường nét đứt kéo sang phải kèm nhãn giá (vì `plot()` cần 2 nến mới vẽ được đường, nên mức mới xuất hiện ở nến cuối sẽ không hiện nếu chỉ dùng `plot()`). Giá trị ATR(14) và khoảng SL (k×ATR) xem trong Data Window. Lưu ý: ATR của script là EMA của true range (giống backtest Python), khác chỉ báo ATR mặc định của TradingView (RMA/Wilder), nên tự nhân ATR của TradingView × 2.5 sẽ ra số hơi khác.
 
+### Đọc biểu đồ và vào lệnh thủ công (cập nhật 3/10/2026)
+
+| Trên biểu đồ | Ý nghĩa | Khi nào hiện |
+|---|---|---|
+| ▲ xanh dưới nến | Tín hiệu: EMA9 cắt lên EMA45, 3 EMA xếp đúng thứ tự | Nến tín hiệu |
+| Chấm **xanh lá** + nhãn **"Buy stop …"** | **Giá entry**: đặt lệnh stop mua ở đây | Từ khi nến tín hiệu đóng đến khi khớp hoặc bị hủy |
+| Chấm **đỏ nhạt** + nhãn **"Projected SL …"** | **SL dự kiến** = Buy stop − 2.5×ATR | Cùng lúc với Buy stop |
+| Mũi tên **"Long"** | Lệnh đã khớp (giá vào thực tế) | Nến khớp lệnh |
+| Chấm **đỏ đậm** + nhãn **"Stop loss …"** | **SL thật** = giá khớp − 2.5×ATR | Suốt thời gian giữ lệnh, kể cả lệnh khớp rồi chạm SL ngay trong nến |
+| Chấm **tím hồng** + nhãn **"Exit stop …"** | Mức thoát (đáy nến EMA9 cắt xuống) | Khi đang giữ lệnh và EMA9 vừa cắt xuống |
+| Mũi tên **"Exit"** | Lệnh đã đóng | Nến thoát lệnh |
+
+Ở nến mới nhất, các mức đang hiệu lực được vẽ thêm bằng nét đứt kéo sang phải kèm nhãn giá; khoảng SL và ATR xem trong **Data Window**. (Bản tiếng Việt dùng nhãn "Chờ mua", "SL dự kiến", "Stop loss", "Chờ thoát".)
+
+Quy trình khi tự theo dõi biểu đồ (gói TradingView miễn phí không có alert kỹ thuật):
+1. Khi thấy "Buy stop" và "Projected SL": đặt **lệnh stop mua** ở Buy stop và **SL** ở Projected SL trên sàn. Khối lượng = (vốn thật × % rủi ro) ÷ khoảng SL (khối lượng trong script dựa trên vốn giả lập $1,000, không dùng được cho tài khoản thật).
+2. Nếu đường xanh biến mất trước khi khớp (EMA9 cắt xuống): **hủy lệnh chờ** trên sàn.
+3. Khi đã khớp: SL thật = **giá khớp thực tế − khoảng SL** (nếu nến mở cửa vượt mức chờ thì giá khớp cao hơn Buy stop, SL cũng dịch lên) — đúng bằng chấm đỏ đậm hiện sau khi khớp.
+4. Khi xuất hiện "Exit stop": dời lệnh dừng trên sàn lên mức đó nếu nó cao hơn SL (mức cao hơn bị chạm trước); nếu EMA9 cắt lên lại thì trả về SL cũ.
+5. Các mức chỉ cập nhật **khi nến 1h đóng cửa**; script **không tự đặt lệnh** trên sàn.
+
+Đã kiểm tra trên BTCUSDT 1h: tín hiệu Buy stop 85,514 / SL dự kiến 84,108.27 hiện chấm ở nến tín hiệu; nến sau khớp rồi chạm SL cùng giờ, có chấm Stop loss 84,108.29. Chưa kiểm tra trực tiếp được đường nét đứt + nhãn ở nến mới nhất (chưa có lệnh chờ/lệnh mở kể từ khi sửa).
+
 **Cảnh báo (alert):** script gửi cảnh báo khi nến đóng cửa cho 7 sự kiện: có lệnh chờ mua mới (kèm giá chờ, SL dự kiến, khoảng SL), hủy lệnh chờ mua, đã khớp mua (kèm SL), khớp rồi chạm SL ngay trong nến, có mức chờ thoát (kèm mức dừng hiệu lực), hủy lệnh chờ thoát, đã đóng lệnh. Cách bật: trên biểu đồ bấm **Alert** (biểu tượng đồng hồ) → Condition chọn strategy này → chọn **"alert() function calls only"** → chọn cách nhận (app, email…) → Create. Cả 7 sự kiện nằm trong 1 alert. Mỗi lần sửa script phải xóa và tạo lại alert (alert chạy trên bản script lúc tạo). **Lưu ý:** alert trên chỉ báo/strategy cần gói TradingView trả phí; gói Basic miễn phí cho 0 alert kỹ thuật (đã thử ngày 3/10/2026: "Alert saving failed" + yêu cầu nâng cấp).
 
-**Cách dùng:** mở TradingView → Pine Editor → dán nội dung file → **Add to chart** → xem tab **Strategy Tester**. Script đã được lưu riêng tư trong tài khoản TradingView của chủ dự án với tên **"EMA9/45/200 Breakout & Pullback V5"** (mở lại trong Pine Editor → Open, hoặc Indicators → My scripts). Có thể tạo cảnh báo bằng nút **Add alert** trong Strategy Tester.
+**Cách dùng:** mở TradingView → Pine Editor → dán nội dung file → **Add to chart** → xem tab **Strategy Tester**. Script đã được lưu riêng tư trong tài khoản TradingView của chủ dự án với tên **"EMA9/45/200 Breakout & Pullback V5"** (mở lại trong Pine Editor → Open, hoặc Indicators → My scripts). Cảnh báo (alert) trên strategy cần gói trả phí, xem mục cảnh báo ở trên.
 
 **Kiểm tra trên TradingView (28/9/2026)**: script biên dịch không lỗi. BTCUSDT (Binance) H1, Breakout, SL 2.5×ATR, rủi ro 1%/lệnh:
 
