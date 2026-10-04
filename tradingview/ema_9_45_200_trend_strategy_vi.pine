@@ -17,12 +17,13 @@
 strategy("EMA9/45/200 Breakout & Pullback V5", overlay = true, initial_capital = 1000, currency = currency.USD,
          pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.04,
          default_qty_type = strategy.fixed, default_qty_value = 1,
-         margin_long = 10, margin_short = 10)   // đòn bẩy 10x: khi ATR thấp, lệnh rủi ro 1% có giá trị lớn hơn vốn; Pine v6 mặc định ký quỹ 100% nên sẽ bỏ qua các lệnh đó
+         margin_long = 10, margin_short = 10, max_labels_count = 500)   // đòn bẩy 10x: khi ATR thấp, lệnh rủi ro 1% có giá trị lớn hơn vốn; Pine v6 mặc định ký quỹ 100% nên sẽ bỏ qua các lệnh đó
 
 // ---------- Inputs ----------
 mode       = input.string("Breakout", "Kiểu vào lệnh", options = ["Breakout", "Pullback V5"])
 atrMult    = input.float(2.5, "SL = k x ATR(14)", minval = 0.5, step = 0.5, tooltip = "Khuyến nghị: BTC H1 Breakout 2.5; vàng H4 Breakout 2.0-3.5 hoặc Pullback V5 2.0-2.5")
 riskPct    = input.float(1.0, "Rủi ro mỗi lệnh (% vốn)", minval = 0.1, step = 0.1)
+maxLev     = input.float(10, "Đòn bẩy tối đa (giới hạn khối lượng)", minval = 1, step = 1, tooltip = "Giá trị lệnh không vượt quá vốn x hệ số này để TradingView luôn khớp lệnh. Giữ Properties > Margin for long positions không lớn hơn 100 / hệ số này (10 -> margin 10). Khi chạm giới hạn, rủi ro thực tế nhỏ hơn % rủi ro ở trên.")
 fastLen    = input.int(9, "EMA nhanh", minval = 1)
 slowLen    = input.int(45, "EMA chậm", minval = 2)
 trendLen   = input.int(200, "EMA xu hướng", minval = 2)
@@ -53,6 +54,7 @@ var bool  below       = false  // Pullback: giá đã đóng cửa dưới EMA45
 var float exitLevel   = na     // mức chờ thoát (đáy nến cắt xuống)
 var float slDist      = na     // khoảng SL = k x ATR của nến trước nến vào lệnh
 var float slPrice     = na
+var float entryPx     = na     // giá khớp của lệnh hiện tại / gần nhất
 var int   tradeCount  = 0
 
 int  nowCount = strategy.opentrades + strategy.closedtrades
@@ -65,7 +67,8 @@ if filled
     pending := na
     waiting := false
     below   := false
-    slPrice := (not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)) - slDist
+    entryPx := not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)
+    slPrice := entryPx - slDist
 
 if flat
     exitLevel := na
@@ -103,7 +106,9 @@ else
 bool canEnter = flat and not na(pending) and aligned and (mode == "Breakout" or up)
 if canEnter
     slDist := atrMult * atr
-    float qty = strategy.equity * riskPct / 100 / slDist
+    float riskQty = strategy.equity * riskPct / 100 / slDist
+    float maxQty  = strategy.equity * maxLev * 0.95 / pending   // giữ lệnh trong giới hạn ký quỹ để TradingView khớp được
+    float qty     = math.min(riskQty, maxQty)
     strategy.entry("Long", strategy.long, qty = qty, stop = pending)
     strategy.exit("Exit", from_entry = "Long", loss = slDist / syminfo.mintick)   // SL theo giá khớp thật, có hiệu lực ngay trong nến vào lệnh
 else
@@ -122,6 +127,15 @@ plot(not flat or filled ? slPrice : na, "Stop loss", color = color.red, style = 
 plot(not flat ? exitLevel : na, "Mức chờ thoát", color = color.fuchsia, style = plot.style_circles, linewidth = 2)
 plotshape(crossUp and aligned, "Tín hiệu cắt lên", shape.triangleup, location.belowbar, color.green, size = size.tiny)
 plotshape(crossDn, "EMA9 cắt xuống", shape.triangledown, location.abovebar, color.red, size = size.tiny)
+
+// ---------- Đánh dấu vào lệnh: nhãn LONG kèm giá vào, SL và rủi ro ở nến khớp ----------
+plot(not flat or filled ? entryPx : na, "Giá vào lệnh", color = color.new(color.blue, 0), style = plot.style_circles, linewidth = 2)
+if filled
+    string txt = "LONG\nVào " + str.tostring(entryPx, format.mintick) + "\nSL " + str.tostring(slPrice, format.mintick) + "\n1R = " + str.tostring(slDist, format.mintick) + (flat ? "\nChạm SL ngay trong nến" : "")
+    label.new(bar_index, low, txt, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(color.green, 10), textcolor = color.white, size = size.small)
+// giá đã vượt mức chờ mua nhưng TradingView không khớp lệnh (thường do ký quỹ / khối lượng)
+if flat and not filled and canEnter[1] and high >= pending[1]
+    label.new(bar_index, high, "Giá vượt mức chờ mua " + str.tostring(pending[1], format.mintick) + " nhưng KHÔNG khớp\nkiểm tra Properties > Margin / Đòn bẩy tối đa", yloc = yloc.abovebar, style = label.style_label_down, color = color.new(color.orange, 10), textcolor = color.white, size = size.small)
 
 // ---------- SL dự kiến và các mức đang hiệu lực ----------
 float projSL = canEnter ? pending - atrMult * atr : na   // SL nếu lệnh chờ mua khớp đúng ở mức chờ

@@ -13,12 +13,13 @@
 strategy("EMA 9/45/200 Trend Strategy [Breakout / Pullback]", overlay = true, initial_capital = 1000, currency = currency.USD,
          pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.04, slippage = 2,
          default_qty_type = strategy.fixed, default_qty_value = 1,
-         margin_long = 10, margin_short = 10)   // 10x leverage: a 1%-risk position can exceed equity when ATR is low; Pine v6 defaults to 100% margin and would skip those entries
+         margin_long = 10, margin_short = 10, max_labels_count = 500)   // 10x leverage: a 1%-risk position can exceed equity when ATR is low; Pine v6 defaults to 100% margin and would skip those entries
 
 // ---------- Inputs ----------
 mode       = input.string("Breakout", "Entry type", options = ["Breakout", "Pullback"])
 atrMult    = input.float(2.5, "Stop loss = k x ATR(14)", minval = 0.5, step = 0.5)
 riskPct    = input.float(1.0, "Risk per trade (% of equity)", minval = 0.1, step = 0.1)
+maxLev     = input.float(10, "Max leverage (position size cap)", minval = 1, step = 1, tooltip = "Position value is capped at equity x this value so TradingView can always fill the order. Keep Properties > Margin for long positions at or below 100 / this value (10 -> margin 10). If the cap is hit, the risk is smaller than the risk % above.")
 fastLen    = input.int(9, "Fast EMA", minval = 1)
 slowLen    = input.int(45, "Slow EMA", minval = 2)
 trendLen   = input.int(200, "Trend EMA", minval = 2)
@@ -49,6 +50,7 @@ var bool  below       = false  // Pullback: price has closed below the slow EMA
 var float exitLevel   = na     // pending sell-stop level (low of the bearish cross bar)
 var float slDist      = na     // stop distance = k x ATR of the bar before entry
 var float slPrice     = na
+var float entryPx     = na     // fill price of the current / last trade
 var int   tradeCount  = 0
 
 int  nowCount = strategy.opentrades + strategy.closedtrades
@@ -61,7 +63,8 @@ if filled
     pending := na
     waiting := false
     below   := false
-    slPrice := (not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)) - slDist
+    entryPx := not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)
+    slPrice := entryPx - slDist
 
 if flat
     exitLevel := na
@@ -99,7 +102,9 @@ else
 bool canEnter = flat and not na(pending) and aligned and (mode == "Breakout" or up)
 if canEnter
     slDist := atrMult * atr
-    float qty = strategy.equity * riskPct / 100 / slDist
+    float riskQty = strategy.equity * riskPct / 100 / slDist
+    float maxQty  = strategy.equity * maxLev * 0.95 / pending   // keep the order inside the margin limit so TradingView fills it
+    float qty     = math.min(riskQty, maxQty)
     strategy.entry("Long", strategy.long, qty = qty, stop = pending)
     strategy.exit("Exit", from_entry = "Long", loss = slDist / syminfo.mintick)   // stop from the actual fill price, active on the entry bar
 else
@@ -118,6 +123,15 @@ plot(not flat or filled ? slPrice : na, "Stop loss", color = color.red, style = 
 plot(not flat ? exitLevel : na, "Pending exit level", color = color.fuchsia, style = plot.style_circles, linewidth = 2)
 plotshape(crossUp and aligned, "Bullish cross (trend aligned)", shape.triangleup, location.belowbar, color.green, size = size.tiny)
 plotshape(crossDn, "Bearish cross", shape.triangledown, location.abovebar, color.red, size = size.tiny)
+
+// ---------- Entry marker: LONG label with entry, stop loss and risk on the fill bar ----------
+plot(not flat or filled ? entryPx : na, "Entry price", color = color.new(color.blue, 0), style = plot.style_circles, linewidth = 2)
+if filled
+    string txt = "LONG\nEntry " + str.tostring(entryPx, format.mintick) + "\nSL " + str.tostring(slPrice, format.mintick) + "\n1R = " + str.tostring(slDist, format.mintick) + (flat ? "\nStopped out on this bar" : "")
+    label.new(bar_index, low, txt, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(color.green, 10), textcolor = color.white, size = size.small)
+// price traded through the buy-stop but the broker emulator did not fill it (usually margin / order size)
+if flat and not filled and canEnter[1] and high >= pending[1]
+    label.new(bar_index, high, "Buy stop " + str.tostring(pending[1], format.mintick) + " hit but NOT filled\ncheck Properties > Margin / Max leverage", yloc = yloc.abovebar, style = label.style_label_down, color = color.new(color.orange, 10), textcolor = color.white, size = size.small)
 
 // ---------- Projected stop loss and current levels ----------
 float projSL = canEnter ? pending - atrMult * atr : na   // stop loss if the buy-stop fills exactly at the pending level
