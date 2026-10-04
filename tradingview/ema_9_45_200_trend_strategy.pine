@@ -51,20 +51,34 @@ var float exitLevel   = na     // pending sell-stop level (low of the bearish cr
 var float slDist      = na     // stop distance = k x ATR of the bar before entry
 var float slPrice     = na
 var float entryPx     = na     // fill price of the current / last trade
-var int   tradeCount  = 0
+var float orderLvl    = na     // buy-stop level active on this bar (set at the previous close)
+var bool  inPos       = false
+var float risk1R      = na     // 1R of the current / last trade, fixed at the fill
 
-int  nowCount = strategy.opentrades + strategy.closedtrades
-bool filled   = nowCount > tradeCount   // a new entry filled on this bar
-tradeCount   := nowCount
-bool flat     = strategy.position_size == 0
-
-if filled
-    // entry filled (including fill + stop on the same bar): clear the pending state
+// Position from the rules applied to each bar's OHLC, independent of the Strategy Tester (margin, order size): this drives every marker, level and alert
+bool  filled = false
+bool  closed = false
+float exitPx = na
+if not inPos and not na(orderLvl) and high >= orderLvl
+    entryPx := math.max(orderLvl, open)          // gap above the level -> filled at the open
+    slPrice := entryPx - slDist
+    risk1R  := slDist
+    inPos   := true
+    filled  := true
     pending := na
     waiting := false
     below   := false
-    entryPx := not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)
-    slPrice := entryPx - slDist
+    if low <= slPrice                            // stop hit on the fill bar: assume the worst case (as the Python backtest on 1H)
+        inPos  := false
+        closed := true
+        exitPx := slPrice
+else if inPos
+    float activeStop = na(exitLevel) ? slPrice : math.max(slPrice, exitLevel)
+    if low <= activeStop
+        inPos  := false
+        closed := true
+        exitPx := math.min(activeStop, open)     // gap below the stop -> exit at the open
+bool flat = not inPos
 
 if flat
     exitLevel := na
@@ -109,8 +123,11 @@ if canEnter
     strategy.exit("Exit", from_entry = "Long", loss = slDist / syminfo.mintick)   // stop from the actual fill price, active on the entry bar
 else
     strategy.cancel("Long")
+orderLvl := canEnter ? pending : na
+if flat and strategy.position_size > 0
+    strategy.close("Long")   // Strategy Tester only: never keep a position the rules have already closed
 
-if not flat
+if not flat and strategy.position_size > 0
     float stopLvl = na(exitLevel) ? slPrice : math.max(slPrice, exitLevel)
     strategy.exit("Exit", from_entry = "Long", stop = stopLvl)
 
@@ -127,11 +144,11 @@ plotshape(crossDn, "Bearish cross", shape.triangledown, location.abovebar, color
 // ---------- Entry marker: LONG label with entry, stop loss and risk on the fill bar ----------
 plot(not flat or filled ? entryPx : na, "Entry price", color = color.new(color.blue, 0), style = plot.style_circles, linewidth = 2)
 if filled
-    string txt = "LONG\nEntry " + str.tostring(entryPx, format.mintick) + "\nSL " + str.tostring(slPrice, format.mintick) + "\n1R = " + str.tostring(slDist, format.mintick) + (flat ? "\nStopped out on this bar" : "")
+    string txt = "LONG\nEntry " + str.tostring(entryPx, format.mintick) + "\nSL " + str.tostring(slPrice, format.mintick) + "\n1R = " + str.tostring(risk1R, format.mintick) + (flat ? "\nStopped out on this bar" : "")
     label.new(bar_index, low, txt, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(color.green, 10), textcolor = color.white, size = size.small)
-// price traded through the buy-stop but the broker emulator did not fill it (usually margin / order size)
-if flat and not filled and canEnter[1] and high >= pending[1]
-    label.new(bar_index, high, "Buy stop " + str.tostring(pending[1], format.mintick) + " hit but NOT filled\ncheck Properties > Margin / Max leverage", yloc = yloc.abovebar, style = label.style_label_down, color = color.new(color.orange, 10), textcolor = color.white, size = size.small)
+if closed
+    float rMult = (exitPx - entryPx) / risk1R
+    label.new(bar_index, high, "EXIT " + str.tostring(exitPx, format.mintick) + "\n" + (rMult >= 0 ? "+" : "") + str.tostring(rMult, "#.##") + "R", yloc = yloc.abovebar, style = label.style_label_down, color = rMult >= 0 ? color.new(color.teal, 10) : color.new(color.red, 10), textcolor = color.white, size = size.small)
 
 // ---------- Projected stop loss and current levels ----------
 float projSL = canEnter ? pending - atrMult * atr : na   // stop loss if the buy-stop fills exactly at the pending level
@@ -181,12 +198,12 @@ if canEnter and (not canEnter[1] or pending != pending[1])
 if canEnter[1] and not canEnter and not filled
     alert(tag + "Buy stop " + fmt(pending[1]) + " cancelled", alert.freq_once_per_bar_close)
 if filled and not flat
-    alert(tag + "LONG FILLED at " + fmt(strategy.position_avg_price) + " | stop loss " + fmt(slPrice) + " | SL distance " + fmt(slDist), alert.freq_once_per_bar_close)
+    alert(tag + "LONG FILLED at " + fmt(entryPx) + " | stop loss " + fmt(slPrice) + " | SL distance " + fmt(risk1R), alert.freq_once_per_bar_close)
 if filled and flat
     alert(tag + "Long filled and stopped out on the same bar", alert.freq_once_per_bar_close)
 if not flat and crossDn
     alert(tag + "EXIT STOP " + fmt(exitLevel) + " | stop loss " + fmt(slPrice) + " | active stop " + fmt(math.max(slPrice, exitLevel)), alert.freq_once_per_bar_close)
 if not flat and crossUp and not na(exitLevel[1])
     alert(tag + "Exit stop cancelled (EMA9 back above EMA45) | stop loss " + fmt(slPrice), alert.freq_once_per_bar_close)
-if flat and not filled and strategy.closedtrades > strategy.closedtrades[1]
-    alert(tag + "POSITION CLOSED at " + fmt(strategy.closedtrades.exit_price(strategy.closedtrades - 1)), alert.freq_once_per_bar_close)
+if closed and not filled
+    alert(tag + "POSITION CLOSED at " + fmt(exitPx) + " (" + str.tostring((exitPx - entryPx) / risk1R, "#.##") + "R)", alert.freq_once_per_bar_close)

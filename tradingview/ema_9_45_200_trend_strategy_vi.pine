@@ -55,20 +55,34 @@ var float exitLevel   = na     // mức chờ thoát (đáy nến cắt xuống)
 var float slDist      = na     // khoảng SL = k x ATR của nến trước nến vào lệnh
 var float slPrice     = na
 var float entryPx     = na     // giá khớp của lệnh hiện tại / gần nhất
-var int   tradeCount  = 0
+var float orderLvl    = na     // mức chờ mua có hiệu lực ở nến này (đặt lúc đóng nến trước)
+var bool  inPos       = false
+var float risk1R      = na     // 1R của lệnh hiện tại / gần nhất, cố định lúc khớp
 
-int  nowCount = strategy.opentrades + strategy.closedtrades
-bool filled   = nowCount > tradeCount   // có lệnh mới được khớp trong nến này
-tradeCount   := nowCount
-bool flat     = strategy.position_size == 0
-
-if filled
-    // lệnh vừa khớp (kể cả khớp rồi bị SL ngay trong nến): xóa trạng thái chờ
+// Vị thế theo luật, tính từ OHLC của từng nến, không phụ thuộc Strategy Tester (ký quỹ, khối lượng): mọi nhãn, mức giá và cảnh báo đều dựa vào đây
+bool  filled = false
+bool  closed = false
+float exitPx = na
+if not inPos and not na(orderLvl) and high >= orderLvl
+    entryPx := math.max(orderLvl, open)          // mở cửa vượt mức chờ -> khớp ở giá mở cửa
+    slPrice := entryPx - slDist
+    risk1R  := slDist
+    inPos   := true
+    filled  := true
     pending := na
     waiting := false
     below   := false
-    entryPx := not flat ? strategy.position_avg_price : strategy.closedtrades.entry_price(strategy.closedtrades - 1)
-    slPrice := entryPx - slDist
+    if low <= slPrice                            // chạm SL ngay trong nến khớp: giả định bất lợi (giống backtest Python khung H1)
+        inPos  := false
+        closed := true
+        exitPx := slPrice
+else if inPos
+    float activeStop = na(exitLevel) ? slPrice : math.max(slPrice, exitLevel)
+    if low <= activeStop
+        inPos  := false
+        closed := true
+        exitPx := math.min(activeStop, open)     // mở cửa dưới mức dừng -> thoát ở giá mở cửa
+bool flat = not inPos
 
 if flat
     exitLevel := na
@@ -113,8 +127,11 @@ if canEnter
     strategy.exit("Exit", from_entry = "Long", loss = slDist / syminfo.mintick)   // SL theo giá khớp thật, có hiệu lực ngay trong nến vào lệnh
 else
     strategy.cancel("Long")
+orderLvl := canEnter ? pending : na
+if flat and strategy.position_size > 0
+    strategy.close("Long")   // chỉ cho Strategy Tester: không giữ vị thế khi luật đã đóng lệnh
 
-if not flat
+if not flat and strategy.position_size > 0
     float stopLvl = na(exitLevel) ? slPrice : math.max(slPrice, exitLevel)
     strategy.exit("Exit", from_entry = "Long", stop = stopLvl)
 
@@ -131,11 +148,11 @@ plotshape(crossDn, "EMA9 cắt xuống", shape.triangledown, location.abovebar, 
 // ---------- Đánh dấu vào lệnh: nhãn LONG kèm giá vào, SL và rủi ro ở nến khớp ----------
 plot(not flat or filled ? entryPx : na, "Giá vào lệnh", color = color.new(color.blue, 0), style = plot.style_circles, linewidth = 2)
 if filled
-    string txt = "LONG\nVào " + str.tostring(entryPx, format.mintick) + "\nSL " + str.tostring(slPrice, format.mintick) + "\n1R = " + str.tostring(slDist, format.mintick) + (flat ? "\nChạm SL ngay trong nến" : "")
+    string txt = "LONG\nVào " + str.tostring(entryPx, format.mintick) + "\nSL " + str.tostring(slPrice, format.mintick) + "\n1R = " + str.tostring(risk1R, format.mintick) + (flat ? "\nChạm SL ngay trong nến" : "")
     label.new(bar_index, low, txt, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(color.green, 10), textcolor = color.white, size = size.small)
-// giá đã vượt mức chờ mua nhưng TradingView không khớp lệnh (thường do ký quỹ / khối lượng)
-if flat and not filled and canEnter[1] and high >= pending[1]
-    label.new(bar_index, high, "Giá vượt mức chờ mua " + str.tostring(pending[1], format.mintick) + " nhưng KHÔNG khớp\nkiểm tra Properties > Margin / Đòn bẩy tối đa", yloc = yloc.abovebar, style = label.style_label_down, color = color.new(color.orange, 10), textcolor = color.white, size = size.small)
+if closed
+    float rMult = (exitPx - entryPx) / risk1R
+    label.new(bar_index, high, "THOÁT " + str.tostring(exitPx, format.mintick) + "\n" + (rMult >= 0 ? "+" : "") + str.tostring(rMult, "#.##") + "R", yloc = yloc.abovebar, style = label.style_label_down, color = rMult >= 0 ? color.new(color.teal, 10) : color.new(color.red, 10), textcolor = color.white, size = size.small)
 
 // ---------- SL dự kiến và các mức đang hiệu lực ----------
 float projSL = canEnter ? pending - atrMult * atr : na   // SL nếu lệnh chờ mua khớp đúng ở mức chờ
@@ -185,12 +202,12 @@ if canEnter and (not canEnter[1] or pending != pending[1])
 if canEnter[1] and not canEnter and not filled
     alert(tag + "Hủy lệnh chờ mua " + fmt(pending[1]), alert.freq_once_per_bar_close)
 if filled and not flat
-    alert(tag + "ĐÃ KHỚP MUA " + fmt(strategy.position_avg_price) + " | stop loss " + fmt(slPrice) + " | khoảng SL " + fmt(slDist), alert.freq_once_per_bar_close)
+    alert(tag + "ĐÃ KHỚP MUA " + fmt(entryPx) + " | stop loss " + fmt(slPrice) + " | khoảng SL " + fmt(risk1R), alert.freq_once_per_bar_close)
 if filled and flat
     alert(tag + "Lệnh mua khớp rồi chạm SL ngay trong nến", alert.freq_once_per_bar_close)
 if not flat and crossDn
     alert(tag + "CHỜ THOÁT " + fmt(exitLevel) + " | stop loss " + fmt(slPrice) + " | mức dừng hiệu lực " + fmt(math.max(slPrice, exitLevel)), alert.freq_once_per_bar_close)
 if not flat and crossUp and not na(exitLevel[1])
     alert(tag + "Hủy lệnh chờ thoát (EMA9 cắt lên lại EMA45) | stop loss " + fmt(slPrice), alert.freq_once_per_bar_close)
-if flat and not filled and strategy.closedtrades > strategy.closedtrades[1]
-    alert(tag + "ĐÃ ĐÓNG LỆNH ở " + fmt(strategy.closedtrades.exit_price(strategy.closedtrades - 1)), alert.freq_once_per_bar_close)
+if closed and not filled
+    alert(tag + "ĐÃ ĐÓNG LỆNH ở " + fmt(exitPx) + " (" + str.tostring((exitPx - entryPx) / risk1R, "#.##") + "R)", alert.freq_once_per_bar_close)
