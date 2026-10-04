@@ -16,7 +16,8 @@
 //   * TradingView chỉ tải một số nến lịch sử giới hạn, nên điểm bắt đầu EMA và kết quả có thể lệch với backtest.
 strategy("EMA9/45/200 Breakout & Pullback V5", overlay = true, initial_capital = 1000, currency = currency.USD,
          pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.04,
-         default_qty_type = strategy.fixed, default_qty_value = 1)
+         default_qty_type = strategy.fixed, default_qty_value = 1,
+         margin_long = 10, margin_short = 10)   // đòn bẩy 10x: khi ATR thấp, lệnh rủi ro 1% có giá trị lớn hơn vốn; Pine v6 mặc định ký quỹ 100% nên sẽ bỏ qua các lệnh đó
 
 // ---------- Inputs ----------
 mode       = input.string("Breakout", "Kiểu vào lệnh", options = ["Breakout", "Pullback V5"])

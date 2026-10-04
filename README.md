@@ -69,7 +69,9 @@ File: [`tradingview/ema_9_45_200_trend_strategy.pine`](tradingview/ema_9_45_200_
 2. **Save**, then **Add to chart** (e.g. BINANCE:BTCUSDT 1H or BINANCE:PAXGUSDT 4H).
 3. Check the **Strategy Tester** tab. Adjust *Entry type*, *Stop loss = k x ATR(14)* and *Risk per trade* in the settings.
 
-Defaults: initial capital 1,000 USD, commission 0.04% per side, slippage 2 ticks, long only, no pyramiding.
+Defaults: initial capital 1,000 USD, commission 0.04% per side, slippage 2 ticks, long only, no pyramiding, margin 10% (10x leverage).
+
+Why the margin setting matters: the position is sized so that the stop costs 1% of equity, so its value is about `equity × 1% × price ÷ (k × ATR)`. When ATR is small (quiet markets) this is larger than the account — e.g. BTC at 85,000 with ATR ≈ 125 gives a position worth ≈ 2.7× equity. Pine v6 defaults to 100% margin (no leverage), and the TradingView broker emulator then does not fill those orders, so the chart shows the buy-stop but never a "Long". With `margin_long = 10` positions up to 10× equity are allowed. Change it under *Settings → Properties → Margin for long positions* (e.g. 20 = 5x); if you trade spot without leverage, lower *Risk per trade* instead.
 
 On the chart: green = pending buy-stop, light red = **projected stop loss** (buy-stop − k × ATR, shown as soon as an order is pending), red = active stop loss, fuchsia = pending exit level. Levels are drawn as dots, so a level that exists for a single bar (e.g. a buy-stop that fills on the next bar, or a fill that is stopped out on the same bar) is still visible. On the last bar the active levels are also drawn as dashed lines extending right with price labels. ATR(14) and the stop distance are shown in the Data Window. The script's ATR is an EMA of the true range (same as the Python backtest), so it differs slightly from TradingView's built-in ATR indicator (RMA / Wilder).
 

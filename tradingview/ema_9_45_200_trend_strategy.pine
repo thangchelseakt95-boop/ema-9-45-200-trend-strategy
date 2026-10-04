@@ -12,7 +12,8 @@
 //     it is cancelled if EMA9 crosses back above EMA45 before it fills.
 strategy("EMA 9/45/200 Trend Strategy [Breakout / Pullback]", overlay = true, initial_capital = 1000, currency = currency.USD,
          pyramiding = 0, commission_type = strategy.commission.percent, commission_value = 0.04, slippage = 2,
-         default_qty_type = strategy.fixed, default_qty_value = 1)
+         default_qty_type = strategy.fixed, default_qty_value = 1,
+         margin_long = 10, margin_short = 10)   // 10x leverage: a 1%-risk position can exceed equity when ATR is low; Pine v6 defaults to 100% margin and would skip those entries
 
 // ---------- Inputs ----------
 mode       = input.string("Breakout", "Entry type", options = ["Breakout", "Pullback"])
