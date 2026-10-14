@@ -51,10 +51,13 @@ scripts/
   oos_pullback_test.py  -> Validation out-of-sample cho Breakout VA Pullback (oos_test.py chỉ có Breakout)
   download_binance.py   -> Tải nến Binance (public API) cho cặp bất kỳ, lưu CSV dt,open,high,low,close,volume
   asset_test.py         -> Backtest Breakout + Pullback (D1/H4/H1, in-sample/ngoài mẫu, phí 0.04%/0.1%) cho tài sản bất kỳ, lưu results/<ten>_summary.csv
+  breakout5_test.py     -> Biến thể entry phá đỉnh 5 nến gần nhất tại nến cắt lên, so với Breakout gốc (BTC + vàng, ATR 1.5-3.5), lưu results/breakout5_*.csv
 results/
   trades_d1.csv, trades_h4.csv, trades_h1.csv  -> Chi tiết từng lệnh (ngày vào/ra, entry/SL/exit, R)
   full_track_summary.csv  -> Bảng tổng hợp full track record (khung × ATR: số lệnh, win rate, PF, expectancy, tổng R, Max DD, R/DD; cả bản chưa và đã trừ phí, cột hậu tố _phi)
   paxg_summary.csv      -> Kết quả vàng từ asset_test.py (khung × chiến lược × ATR; cột is_/oos_/full_phi004_/full_phi01_)
+  breakout5_summary.csv -> Biến thể phá đỉnh N nến (tài sản × khung × entry × ATR; cột full_/is_/oos_, đã trừ phí 0.04%)
+  breakout5_trades_btc_h1.csv, breakout5_trades_paxg_h4.csv -> Chi tiết lệnh của luật đỉnh 5 nến (BTC H1 2.5×, vàng H4 2.0×)
 tradingview/
   ema_9_45_200_trend_strategy.pine    -> Strategy Pine Script v6, bản tiếng Anh (bản chính, MPL 2.0)
   ema_9_45_200_trend_strategy_vi.pine -> Cùng logic, nhãn tiếng Việt (xem mục "Chiến lược trên TradingView")
@@ -70,6 +73,7 @@ python3 oos_test.py            # validation out-of-sample trên dữ liệu sau 
 python3 full_track.py          # full track record 2021 -> nay cho cả 3 khung
 python3 oos_pullback_test.py    # validation out-of-sample cho ca Breakout va Pullback
 python3 asset_test.py ../data/paxg_h1.csv ../data/paxg_h4.csv PAXG   # vàng (tải dữ liệu trước bằng download_binance.py)
+python3 breakout5_test.py      # biến thể entry phá đỉnh 5 nến gần nhất (~7 phút)
 ```
 
 ## Lưu ý kỹ thuật quan trọng (đã từng gây lỗi, đừng lặp lại)
@@ -488,6 +492,38 @@ Các bảng: lệnh, win rate, PF, kỳ vọng, Max DD là toàn giai đoạn **
 3. Trượt giá chưa tính, và với thanh khoản mỏng của PAXG thì đây là rủi ro lớn hơn so với BTC.
 
 **Kết luận vàng**: **H4 + Breakout + SL 2.0–3.5×ATR** (hoặc **Pullback V5 2.0–2.5×** nếu ưu tiên DD thấp) là cấu hình có bằng chứng tốt nhất trong toàn dự án (lãi phân bố đều hơn và chịu được phí cao hơn BTC H1), nhưng được test trong giai đoạn vàng tăng rất mạnh — cần theo dõi thêm khi vàng đi ngang hoặc giảm. Chạy lại: `python download_binance.py PAXGUSDT 1h ../data/paxg_h1.csv`, `python download_binance.py PAXGUSDT 4h ../data/paxg_h4.csv`, rồi `python asset_test.py ../data/paxg_h1.csv ../data/paxg_h4.csv PAXG`.
+
+## Biến thể entry: phá đỉnh 5 nến gần nhất (14/10/2026)
+
+**Luật**: nến tín hiệu vẫn là nến EMA9 cắt lên EMA45 (với EMA9 > EMA45 > EMA200), nhưng lệnh chờ mua đặt ở **đỉnh cao nhất của 5 nến gần nhất tại nến tín hiệu** (nến tín hiệu + 4 nến trước nó) thay vì đỉnh của riêng nến tín hiệu. Mức chờ cố định từ lúc cắt lên. Mọi luật khác giữ nguyên Breakout: hủy chờ khi EMA9 cắt xuống, khớp ở `max(mức chờ, giá mở cửa)`, SL = giá vào − k×ATR(14), thoát bằng breakdown đáy nến cắt xuống, SL trong nến vào lệnh (nến H1 cho H4/D1), làm nóng EMA 200 nến.
+
+Script `scripts/breakout5_test.py` (hàm `run_breakout_n`); với `lookback=1` cho kết quả khớp đúng `full_track_summary.csv` (BTC D1/H4/H1 2.5×). Dữ liệu: BTC `h1_combined_2021_now.csv` / `h4_full.csv` (đến 23/9/2026), vàng `paxg_h1.csv` / `paxg_h4.csv` (đến 27/9/2026). Ngoài mẫu = lệnh vào từ 1/10/2025, tách từ cùng một lần chạy. Kết quả đầy đủ (ATR 1.5–3.5×, 6 biến thể): `results/breakout5_summary.csv`; chi tiết lệnh: `results/breakout5_trades_btc_h1.csv` (2.5×), `results/breakout5_trades_paxg_h4.csv` (2.0×).
+
+**Toàn bộ số liệu dưới đây đã trừ phí 0.04%/chiều, kể cả cột ngoài mẫu** (README ghi PF ngoài mẫu chưa trừ phí: BTC H1 2.5× gốc là 1.18 chưa phí = 1.04 sau phí).
+
+| Tài sản / khung | ATR | Entry | Lệnh | Win rate | PF | Kỳ vọng | Tổng R | Max DD | Ngoài mẫu: PF (lệnh), tổng R |
+|---|---|---|---|---|---|---|---|---|---|
+| BTC H1 | 2.5× | Gốc (đỉnh nến tín hiệu) | 205 | 28.3% | 1.84 | +0.533R | +109.2R | -15.3R | 1.04 (28), +0.8R |
+| BTC H1 | 2.5× | **Đỉnh 5 nến** | 198 | 28.3% | 1.86 | +0.548R | +108.6R | -15.5R | 1.02 (28), +0.4R |
+| BTC H4 | 2.0× | Gốc | 60 | 21.7% | 1.46 | +0.307R | +18.4R | -10.8R | thua cả 7, -5.2R |
+| BTC H4 | 2.0× | **Đỉnh 5 nến** | 57 | 22.8% | 1.50 | +0.338R | +19.3R | -10.7R | thua cả 6, -4.4R |
+| BTC D1 | 2.5× | Gốc = Đỉnh 5 nến | 11 | 45.5% | 2.96 | +0.848R | +9.3R | -2.0R | thua 1 lệnh |
+| Vàng H4 | 2.0× | Gốc | 56 | 37.5% | 2.51 | +0.740R | +41.4R | -6.5R | 5.55 (8), +11.6R |
+| Vàng H4 | 2.0× | **Đỉnh 5 nến** | 49 | 42.9% | **3.07** | +0.941R | +46.1R | **-3.4R** | 15.6 (6), +13.1R |
+| Vàng H4 | 2.5× | Gốc | 55 | 38.2% | 2.43 | +0.589R | +32.4R | -4.6R | 5.55 (8), +9.2R |
+| Vàng H4 | 2.5× | **Đỉnh 5 nến** | 49 | 42.9% | 2.84 | +0.723R | +35.4R | -3.2R | 15.6 (6), +10.5R |
+| Vàng H1 | 2.5× | Gốc | 220 | 30.5% | 1.27 | +0.161R | +35.5R | -39.3R | 3.17 (31), +43.0R |
+| Vàng H1 | 2.5× | **Đỉnh 5 nến** | 204 | 32.8% | 1.37 | +0.223R | +45.4R | -36.6R | 3.56 (27), +45.1R |
+
+**Nhận xét:**
+- **Hai luật thường cho cùng một lệnh**: nến cắt lên thường là nến tăng mạnh, nên trong 62–80% tín hiệu nó đã là nến cao nhất của 5 nến (BTC H1 74%, H4 72%, D1 80%; vàng H4 62%, H1 67%). Khác biệt chỉ đến từ phần còn lại, khi mức chờ cao hơn (trung bình 0.2–0.5%). BTC D1 ra đúng 11 lệnh giống hệt.
+- **BTC H1: không khác biệt đáng kể.** Luật 5 nến bỏ được 10 lệnh của luật gốc (chỉ 1 thắng, tổng -5.4R) nhưng vào muộn hơn và giá xấu hơn ở 16 lệnh khác (+16.7R so với +23.8R), hai phần gần như bù trừ nhau. Ngoài mẫu hơi kém hơn (PF 1.02 so với 1.04). Kết quả tương tự ở mọi mức ATR 1.5–3.5×.
+- **BTC H4**: nhỉnh hơn một chút nhưng vẫn thua toàn bộ lệnh ngoài mẫu, nên vẫn không dùng.
+- **Vàng H4: cải thiện rõ nhất.** Ở ATR 2.0–3.5×: PF tăng 0.3–0.6, Max DD giảm (2.0×: -6.5R → -3.4R), chuỗi thua dài nhất 8 → 5 lệnh, bỏ 3 lệnh lãi nhất vẫn còn +18.5R (gốc +13.8R). Cải thiện đến từ 8 lệnh thua (-5.6R) mà luật gốc vào còn luật 5 nến bỏ qua. Ở 1.5× thì luật 5 nến kém hơn (PF 1.56 so với 1.64). Chênh lệch chỉ dựa trên khoảng 8 lệnh và ngoài mẫu chỉ 6 lệnh, nên chưa đủ để kết luận.
+- **Vàng H1**: tốt hơn nhẹ nhưng in-sample vẫn hòa vốn (PF 1.00), nên vẫn không dùng.
+- **Độ nhạy**: lấy đỉnh 3 hoặc 10 nến cho kết quả gần với 5 nến; lấy 5 nến *trước* nến tín hiệu (không tính nến tín hiệu) hoặc cho mức chờ trượt theo nến mới (đỉnh 5 nến gần nhất cập nhật mỗi nến) không tốt hơn một cách ổn định (mức trượt ngoài mẫu BTC H1 2.5× PF 0.98). Không có số nến nào nổi trội rõ ràng.
+
+**Kết luận**: với BTC H1 (cấu hình chính) đổi sang phá đỉnh 5 nến **không mang lại lợi thế** — giữ luật gốc. Với vàng H4, luật 5 nến cho PF cao hơn và DD thấp hơn, có thể dùng làm phương án thay thế nhưng cần theo dõi thêm dữ liệu mới trước khi đổi mặc định. Pine Script chưa được cập nhật cho biến thể này.
 
 ## Chiến lược trên TradingView (28/9/2026)
 

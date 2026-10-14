@@ -59,6 +59,7 @@ The strategy made less than buy & hold over this bull-market period but with a f
 - **Favourable test period**: both BTC and gold rose strongly from 2021 to 2026. Expect weaker results in sideways or falling markets.
 - **Small out-of-sample samples** (BTC 1H ≈ 28 trades, gold 4H 6–8 trades) and some **overfitting risk** (several ATR levels, two filters and five pullback variants were tried on the same data).
 - **Slippage is not modelled** in the Python backtest — a bigger issue for thin PAXG liquidity. PAXG also trades on weekends, unlike spot gold.
+- **Entry at the 5-bar high** (highest high of the crossover bar and the 4 bars before it) instead of the crossover bar's high: almost no change on BTC 1H (PF 1.86 vs 1.84 after fees, 198 vs 205 trades); on gold 4H 2.0× PF 3.07 vs 2.51 and max DD −3.4R vs −6.5R, but the gain rests on ~8 skipped losing trades. See `docs/research-notes-vi.md`.
 - On 1H there is no lower-timeframe data, so a stop hit on the entry bar is resolved with the worst-case assumption. On 4H/1D the backtest uses 1H bars inside the entry bar.
 
 ## TradingView
@@ -102,6 +103,7 @@ python oos_pullback_test.py   # out-of-sample check (Breakout and Pullback)
 python pullback_test.py       # Breakout vs Pullback, in-sample
 python backtest_main.py       # in-sample 2021 → Sep 2025 statistics + trade lists
 python asset_test.py ../data/paxg_h1.csv ../data/paxg_h4.csv PAXG   # any asset
+python breakout5_test.py      # entry variant: buy-stop at the 5-bar high at the crossover bar → results/breakout5_*.csv
 python download_binance.py PAXGUSDT 4h ../data/paxg_h4.csv          # fetch closed candles from the Binance public API
 ```
 
