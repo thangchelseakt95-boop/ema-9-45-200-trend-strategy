@@ -2,8 +2,8 @@
 //@version=6
 // EMA 9/45/200 Trend Strategy — Breakout or Pullback entry
 // Rules:
-//   * Trend filter: Breakout needs EMA9 > EMA45 > EMA200. Pullback (default) needs EMA9 > EMA45 and close > EMA200
-//     (switchable back to EMA9 > EMA45 > EMA200). The first N bars are skipped while the EMAs warm up.
+//   * Trend filter: Breakout needs EMA9 > EMA45 > EMA200. Pullback needs EMA9 > EMA45 > EMA200 by default
+//     (or EMA9 > EMA45 and close > EMA200) on the pullback bar and at entry; waiting starts on every bullish cross. The first N bars are skipped while the EMAs warm up.
 //   * Breakout: EMA9 crosses above EMA45 -> buy-stop order at the high of the signal bar.
 //   * Pullback: after the cross, the signal bar is either the first bar that touches EMA45 but closes above it,
 //     or the first bar that closes back above EMA45 after closing below it. Buy-stop at the high of that bar.
@@ -17,7 +17,7 @@ strategy("EMA 9/45/200 Trend Strategy [Breakout / Pullback]", overlay = true, in
 
 // ---------- Inputs ----------
 mode       = input.string("Breakout", "Entry type", options = ["Breakout", "Pullback"])
-pbFilter   = input.string("Price > EMA200", "Pullback trend filter", options = ["Price > EMA200", "EMA9 > EMA45 > EMA200"],
+pbFilter   = input.string("EMA9 > EMA45 > EMA200", "Pullback trend filter", options = ["Price > EMA200", "EMA9 > EMA45 > EMA200"],
              tooltip = "Price > EMA200: fast EMA > slow EMA and close > trend EMA (enters earlier in a new trend). EMA9 > EMA45 > EMA200: all three EMAs stacked. Breakout always uses the stacked filter.")
 atrMult    = input.float(2.5, "Stop loss = k x ATR(14)", minval = 0.5, step = 0.5)
 riskPct    = input.float(1.0, "Risk per trade (% of equity)", minval = 0.1, step = 0.1)
@@ -74,7 +74,7 @@ if flat
         if crossUp and aligned
             pending := high
     else
-        if crossUp and aligned
+        if crossUp   // start waiting on every bullish cross; the trend filter is checked on the pullback bar and at entry
             waiting := true
             pending := na
             below   := false

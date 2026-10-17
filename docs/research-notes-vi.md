@@ -56,6 +56,7 @@ scripts/
   download_binance.py   -> Tải nến Binance (public API) cho cặp bất kỳ, lưu CSV dt,open,high,low,close,volume
   fx_fee_check.py       -> EUR/USD và USD/EUR với phí forex 0.005%/chiều và không phí, lưu results/eurusd_fx_fee.csv
   ema_tf_report.py      -> Bảng thống kê đầy đủ cho 1 khung bất kỳ (vd 15m) và 1 cặp EMA, lưu results/ema<nhanh>_<chậm>_<tên>_<khung>.csv
+  pullback_arm_test.py  -> Pullback: chờ từ mọi lần cắt lên (luật mới) so với chỉ khi nến cắt lên thỏa bộ lọc (luật cũ), bộ lọc A/B, lưu results/pullback_arm_test.csv
   ema_full_report.py    -> Bảng thống kê đầy đủ cho 1 cặp EMA (vd 10/50): H1/H4/D1, Breakout + Pullback V5, ATR 1.0-4.0, ATR tối ưu, ngoài mẫu, vốn $1,000; lưu results/ema<nhanh>_<chậm>_<tên>.csv
   ema_pair_test.py      -> So sánh các cặp EMA nhanh/chậm (9/45, 10/50, ...) cùng luật, H1/H4/D1, lưu results/ema_pair_<tên>.csv
   h4_report.py          -> Bảng thống kê đầy đủ H4 (Breakout + Pullback V5, sau phí, ngoài mẫu, vốn $1,000), lưu results/h4_report.csv
@@ -874,6 +875,49 @@ Bộ lọc B: tín hiệu Pullback chỉ cần EMA9 cắt lên EMA45 với **gi�
 - Tóm lại: bộ lọc B (vào sớm hơn khi xu hướng mới hình thành, EMA45 chưa kịp vượt EMA200) **giúp Pullback ở BTC H1 và vàng H4 trên dữ liệu quá khứ**, nhưng các lệnh thêm vào đều thua trong giai đoạn ngoài mẫu (mẫu nhỏ). Nếu dùng B, nên theo dõi thêm và giữ rủi ro nhỏ.
 
 **Trên TradingView (17/10/2026):** script "EMA9/45/200 Breakout & Pullback V5" (bản đang dùng, phiên bản 10) có thêm ô **"Bộ lọc xu hướng cho Pullback"** — mặc định **"Giá > EMA200"** (bộ lọc B), chọn "EMA9 > EMA45 > EMA200" để quay về bộ lọc A; Breakout luôn dùng bộ lọc A. Sửa bằng 2 thay đổi: thêm input `pbFilter` và `bool trendOK = mode != "Breakout" and pbFilter == "Giá > EMA200" ? close > e200 : e45 > e200`, `aligned = e9 > e45 and trendOK and ...` — mọi chỗ dùng `aligned` (nến cắt lên, nến tín hiệu Pullback, điều kiện đặt lệnh, dấu ▲) tự áp bộ lọc mới, giống backtest Python. Các phần riêng của bản trên TradingView (đòn bẩy tối đa, ký quỹ 10x, tự theo dõi vị thế) giữ nguyên. Theo kết quả trên: nên dùng B cho Pullback **BTC H1 và vàng H4**, đổi về A cho **BTC H4, vàng H1 và 15m**.
+
+## Pullback: chờ từ mọi lần EMA9 cắt lên EMA45 ("bỏ lỡ Breakout") (18/10/2026)
+
+**Luật mới cho Pullback** (theo ý người dùng): Breakout giữ nguyên (EMA9 cắt lên EMA45, ngay lúc cắt phải có EMA9 > EMA45 > EMA200). Pullback là cơ hội thứ hai của cùng đợt tăng: bắt đầu chờ giá hồi về EMA45 từ **mọi lần EMA9 cắt lên EMA45**, kể cả khi lúc cắt các EMA chưa xếp đúng thứ tự (tức chưa có / đã bỏ lỡ Breakout); điều kiện xu hướng chỉ xét ở **nến hồi về EMA45 và nến trước nến vào lệnh**. Luật cũ chỉ bắt đầu chờ nếu nến cắt lên đã thỏa điều kiện xu hướng. Các luật khác không đổi (V5, hủy chờ khi EMA9 cắt xuống, tối đa 1 lệnh mỗi lần cắt lên, SL k×ATR, thoát breakdown).
+
+Ví dụ phát hiện ra vấn đề: BTC 1H, 17/8/2026 02:00 UTC EMA9 cắt lên EMA45 khi giá 63,403 còn dưới EMA200 (63,555) → luật cũ không có lệnh; luật mới vào Pullback 19/8 07:00 UTC ở 64,344, SL 63,946, thoát 78,245 (+34.9R).
+
+Chạy `cd scripts` rồi `python pullback_arm_test.py` → `results/pullback_arm_test.csv` (cả bộ lọc A và B, ATR 2.0–3.0×; dùng nguyên các hàm của `asset_test.py`, chỉ đổi điều kiện bắt đầu chờ; số "Cũ" trùng bảng `ema9_45_*.csv`). Dữ liệu Binance đến 17/10/2026, EMA9/45, **bộ lọc A (EMA9 > EMA45 > EMA200)**, đã trừ phí 0.04%/chiều; "Bỏ 5" = PF khi bỏ 5 lệnh lãi lớn nhất; ngoài mẫu = lệnh vào từ 1/10/2025.
+
+| Tài sản | ATR | Luật | Lệnh | Win rate | PF | Kỳ vọng | Tổng R | Max DD | R/DD | PF bỏ 5 | Ngoài mẫu |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC H1 | 2.0× | Cũ | 169 | 23.1% | 1.65 | +0.478R | +80.8R | -24.3R | 3.32 | 0.60 | PF 0.51, -11.4R (30 lệnh) |
+| BTC H1 | 2.5× | Cũ | 163 | 26.4% | 1.81 | +0.487R | +79.4R | -13.1R | 6.06 | 0.75 | PF 0.95, -0.7R (27 lệnh) |
+| BTC H1 | 3.0× | Cũ | 162 | 27.2% | 1.70 | +0.376R | +61.0R | -13.4R | 4.54 | 0.70 | PF 0.84, -2.3R (27 lệnh) |
+| BTC H1 | 2.0× | **Mới** | 273 | 23.4% | 1.71 | +0.515R | +140.7R | -23.1R | 6.09 | 0.93 | PF 1.83, +29.9R (50 lệnh) |
+| BTC H1 | 2.5× | **Mới** | 264 | 27.3% | 1.86 | +0.514R | +135.7R | -12.9R | 10.56 | 1.07 | PF 2.21, +31.4R (47 lệnh) |
+| BTC H1 | 3.0× | **Mới** | 261 | 28.4% | 1.80 | +0.427R | +111.5R | -12.8R | 8.74 | 1.06 | PF 2.02, +24.1R (47 lệnh) |
+| BTC H4 | 2.0× | Cũ | 42 | 16.7% | 0.52 | -0.348R | -14.6R | -15.1R | -0.97 | 0.01 | PF 0.29, -0.8R (3 lệnh) |
+| BTC H4 | 2.5× | Cũ | 41 | 19.5% | 1.12 | +0.076R | +3.1R | -12.1R | 0.26 | 0.05 | PF 0.29, -0.7R (3 lệnh) |
+| BTC H4 | 3.0× | Cũ | 41 | 19.5% | 1.05 | +0.026R | +1.1R | -10.4R | 0.10 | 0.05 | PF 0.29, -0.6R (3 lệnh) |
+| BTC H4 | 2.0× | **Mới** | 69 | 21.7% | 1.41 | +0.279R | +19.3R | -12.8R | 1.51 | 0.39 | PF 0.77, -1.1R (8 lệnh) |
+| BTC H4 | 2.5× | **Mới** | 68 | 23.5% | 1.71 | +0.416R | +28.3R | -12.2R | 2.32 | 0.45 | PF 0.71, -1.2R (8 lệnh) |
+| BTC H4 | 3.0× | **Mới** | 68 | 23.5% | 1.60 | +0.314R | +21.3R | -10.9R | 1.96 | 0.42 | PF 0.64, -1.3R (8 lệnh) |
+| PAXG H1 | 2.0× | Cũ | 188 | 22.3% | 1.39 | +0.285R | +53.6R | -58.7R | 0.91 | 0.51 | PF 5.20, +83.0R (28 lệnh) |
+| PAXG H1 | 2.5× | Cũ | 182 | 26.4% | 1.50 | +0.294R | +53.6R | -37.4R | 1.44 | 0.60 | PF 5.15, +66.2R (27 lệnh) |
+| PAXG H1 | 3.0× | Cũ | 181 | 26.5% | 1.45 | +0.231R | +41.9R | -32.3R | 1.29 | 0.58 | PF 4.86, +54.4R (27 lệnh) |
+| PAXG H1 | 2.0× | **Mới** | 277 | 24.9% | 1.27 | +0.195R | +54.0R | -72.6R | 0.74 | 0.66 | PF 4.39, +94.3R (40 lệnh) |
+| PAXG H1 | 2.5× | **Mới** | 270 | 27.8% | 1.29 | +0.173R | +46.8R | -55.4R | 0.85 | 0.69 | PF 4.36, +75.3R (38 lệnh) |
+| PAXG H1 | 3.0× | **Mới** | 269 | 27.9% | 1.22 | +0.120R | +32.2R | -50.1R | 0.64 | 0.66 | PF 4.04, +61.3R (38 lệnh) |
+| PAXG H4 | 2.0× | Cũ | 40 | 40.0% | 2.50 | +0.766R | +30.6R | -4.1R | 7.42 | 0.74 | PF 2.33, +5.3R (6 lệnh) |
+| PAXG H4 | 2.5× | Cũ | 40 | 45.0% | 2.79 | +0.707R | +28.3R | -3.9R | 7.24 | 0.97 | PF 2.19, +4.1R (6 lệnh) |
+| PAXG H4 | 3.0× | Cũ | 40 | 45.0% | 2.72 | +0.581R | +23.2R | -3.7R | 6.30 | 0.95 | PF 1.96, +3.1R (6 lệnh) |
+| PAXG H4 | 2.0× | **Mới** | 65 | 43.1% | 2.98 | +1.028R | +66.8R | -6.3R | 10.65 | 1.14 | PF 1.75, +4.6R (9 lệnh) |
+| PAXG H4 | 2.5× | **Mới** | 63 | 50.8% | 3.49 | +0.954R | +60.1R | -4.0R | 15.03 | 1.43 | PF 1.64, +3.4R (9 lệnh) |
+| PAXG H4 | 3.0× | **Mới** | 63 | 50.8% | 3.35 | +0.781R | +49.2R | -3.4R | 14.32 | 1.37 | PF 1.61, +2.7R (9 lệnh) |
+
+**Kết luận:**
+- **Luật mới tốt hơn rõ ở BTC 1H, BTC 4H và vàng 4H**: BTC 1H 2.5× từ 163 lên 264 lệnh, PF 1.81 → 1.86, tổng R +79.4R → **+135.7R** với Max DD gần như không đổi (-12.9R), R/DD 6.06 → **10.56**, bỏ 5 lệnh lớn nhất vẫn lãi (PF 1.07, luật cũ 0.75), và **ngoài mẫu đảo từ lỗ sang lãi** (47 lệnh PF 2.21, +31.4R; luật cũ 27 lệnh PF 0.95). Vàng 4H 2.5×: PF 2.79 → 3.49, tổng R +28.3R → +60.1R, Max DD -4.0R. BTC 4H: PF 1.12 → 1.71 nhưng ngoài mẫu vẫn yếu (8 lệnh, PF 0.71) và phụ thuộc lệnh lớn.
+- **Vàng 1H kém đi** (PF 1.50 → 1.29, DD -37R → -55R).
+- **Bộ lọc A tốt hơn B với luật mới** ở BTC 1H (R/DD 10.56 so với 9.53; ngoài mẫu PF 2.21 so với 1.73) và vàng 4H (PF 3.49 so với 2.80) → chọn A như người dùng đề xuất.
+- So với Breakout BTC 1H 2.5× (PF 1.77, +104.7R, DD -16.2R, ngoài mẫu PF 0.84 — dữ liệu đến 9/10/2026), **Pullback luật mới + bộ lọc A hiện là cấu hình tốt nhất cho BTC 1H**. Lưu ý: luật này được nghĩ ra sau khi xem một ví dụ cụ thể trên biểu đồ (rủi ro "khớp dữ liệu"), nhưng nó hợp logic và cải thiện cả giai đoạn ngoài mẫu với ~47 lệnh — vẫn nên theo dõi thêm.
+
+**Trên TradingView (18/10/2026):** script "EMA9/45/200 Breakout & Pullback V5" phiên bản 12 — trong nhánh Pullback đổi `if crossUp and aligned` thành `if crossUp` (bắt đầu chờ từ mọi lần cắt lên), mặc định "Bộ lọc xu hướng cho Pullback" = "EMA9 > EMA45 > EMA200". Breakout giữ nguyên `if crossUp and aligned`. Biểu đồ BTCUSDT.P (layout "Rsi") đã gỡ và thêm lại với: Pullback V5, bộ lọc A, SL 2.5, rủi ro 1%, đòn bẩy 10, EMA 9/45/200, làm nóng 200, từ 2010-01-01; tắt Trades on chart / Signal labels / Quantity; màu EMA giữ như cũ (đặt sẵn trong code).
 
 ## Chiến lược trên TradingView (28/9/2026)
 

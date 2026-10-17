@@ -11,10 +11,10 @@ A long-only trend-following strategy built on three EMAs (9 / 45 / 200), with:
 
 | Step | Rule |
 |---|---|
-| Trend filter | Breakout: EMA9 > EMA45 > EMA200 (same timeframe). Pullback: by default EMA9 > EMA45 and **close > EMA200** (input *Pullback trend filter*, switchable back to the stacked filter). The first 200 bars are skipped while the EMAs warm up. The result tables below use the stacked filter for both entry types — see *Further research* for the Pullback filter comparison. |
+| Trend filter | Breakout: EMA9 > EMA45 > EMA200 on the crossover bar. Pullback: waits after **every** bullish cross (so it can catch a missed Breakout) and needs EMA9 > EMA45 > EMA200 on the pullback bar and before entry (input *Pullback trend filter* can switch this to EMA9 > EMA45 and close > EMA200). The first 200 bars are skipped while the EMAs warm up. The result tables below use the original Pullback rule (wait only after an aligned cross) — see *Further research* for the new rule. |
 | Signal | EMA9 crosses above EMA45 while the trend filter is true. |
 | Entry — **Breakout** | Buy-stop at the high of the crossover bar. |
-| Entry — **Pullback** | After the cross, wait for price to come back to EMA45. Signal bar = the first bar that touches EMA45 but closes above it, **or** (if price closes below EMA45) the first bar that closes back above it. Buy-stop at the high of that bar. |
+| Entry — **Pullback** | After any bullish cross (even one that did not meet the trend filter), wait for price to come back to EMA45. Signal bar = the first bar that touches EMA45 but closes above it, **or** (if price closes below EMA45) the first bar that closes back above it. Buy-stop at the high of that bar. |
 | Pending order | Cancelled if EMA9 crosses back below EMA45 before it fills. One trade per crossover. |
 | Stop loss | Entry − k × ATR(14), active from the entry bar (k = 2.5 by default). |
 | Exit | When EMA9 crosses below EMA45: sell-stop at the low of that bar; cancelled if EMA9 crosses back above EMA45 first. |
@@ -129,6 +129,7 @@ Details and full tables are in [`docs/research-notes-vi.md`](docs/research-notes
 - **EMA10/50** (`results/ema10_50_*.csv`): best BTC configuration becomes 4H Breakout 2.0× (PF 2.16, 50 trades, only 4 out of sample); gold 4H Breakout 2.0× PF 3.23 and Pullback 3.0× PF 4.28.
 - **15-minute BTC** (`results/ema*_btc_15m.csv`): ~1,000 trades, Breakout 2.5× PF 1.28, Max DD −52R; more total R than 1H only because of the trade count and one +94.5R trade (stop only 0.20% of price). Removing the 5 largest trades leaves PF 1.03; PF 0.99 at 0.1% fees. Not better than 1H.
 - **Pullback filter "close > EMA200"** (`results/ema9_45_locB_*.csv`): better than the stacked filter on BTC 1H (2.5×: +103R vs +79R, same Max DD) and gold 4H (PF 3.6 vs 2.8), worse on BTC 4H, gold 1H and BTC 15m; the extra trades it adds lost out of sample (small samples).
+- **Pullback waits after every bullish cross** (`scripts/pullback_arm_test.py`, `results/pullback_arm_test.csv`, data to 17 Oct 2026): if the cross happens before the EMAs are stacked (no Breakout), a later pullback to EMA45 is still taken once EMA9 > EMA45 > EMA200. BTC 1H 2.5×: 264 trades, PF 1.86, +135.7R, Max DD −12.9R, out of sample PF 2.21 (+31.4R, 47 trades) vs the old rule 163 trades, PF 1.81, +79.4R, out of sample PF 0.95. Gold 4H 2.5×: PF 3.49, +60.1R (old: 2.79, +28.3R). Worse on gold 1H; BTC 4H improves but stays weak out of sample. The stacked filter beats "close > EMA200" under this rule, so it is now the default. The rule was designed after looking at one chart example, so keep monitoring it.
 - **EUR/USD and USD/EUR** (`results/eurusd_*.csv`, `results/usdeur_summary.csv`): no edge even without fees (PF below 1 almost everywhere).
 
 ## License
