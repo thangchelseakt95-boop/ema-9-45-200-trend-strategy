@@ -65,6 +65,8 @@ The strategy made less than buy & hold over this bull-market period but with a f
 
 File: [`tradingview/ema_9_45_200_trend_strategy.pine`](tradingview/ema_9_45_200_trend_strategy.pine) (a version with Vietnamese labels is in `ema_9_45_200_trend_strategy_vi.pine`).
 
+`tradingview/ema_9_45_200_trend_strategy_vi_tradingview.pine` is the extended Vietnamese version the author runs on TradingView: same entry/exit rules, plus a maximum-leverage cap on position size (`maxLev`, with 10x margin so large low-ATR positions still fill), rule-based position tracking from OHLC (so levels, arrows and alerts do not depend on the Strategy Tester's sizing), entry/exit arrows instead of the Strategy Tester trade labels, and its own EMA colours. Its header comment still mentions the earlier "close > EMA200" Pullback default; the code default is EMA9 > EMA45 > EMA200.
+
 1. Open TradingView → **Pine Editor** → create a new strategy and replace the code with the file's contents.
 2. **Save**, then **Add to chart** (e.g. BINANCE:BTCUSDT 1H or BINANCE:PAXGUSDT 4H).
 3. Check the **Strategy Tester** tab. Adjust *Entry type*, *Pullback trend filter*, *Stop loss = k x ATR(14)* and *Risk per trade* in the settings.
