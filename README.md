@@ -11,7 +11,7 @@ A long-only trend-following strategy built on three EMAs (9 / 45 / 200), with:
 
 | Step | Rule |
 |---|---|
-| Trend filter | EMA9 > EMA45 > EMA200 (same timeframe). The first 200 bars are skipped while the EMAs warm up. |
+| Trend filter | Breakout: EMA9 > EMA45 > EMA200 (same timeframe). Pullback: by default EMA9 > EMA45 and **close > EMA200** (input *Pullback trend filter*, switchable back to the stacked filter). The first 200 bars are skipped while the EMAs warm up. The result tables below use the stacked filter for both entry types — see *Further research* for the Pullback filter comparison. |
 | Signal | EMA9 crosses above EMA45 while the trend filter is true. |
 | Entry — **Breakout** | Buy-stop at the high of the crossover bar. |
 | Entry — **Pullback** | After the cross, wait for price to come back to EMA45. Signal bar = the first bar that touches EMA45 but closes above it, **or** (if price closes below EMA45) the first bar that closes back above it. Buy-stop at the high of that bar. |
@@ -67,7 +67,7 @@ File: [`tradingview/ema_9_45_200_trend_strategy.pine`](tradingview/ema_9_45_200_
 
 1. Open TradingView → **Pine Editor** → create a new strategy and replace the code with the file's contents.
 2. **Save**, then **Add to chart** (e.g. BINANCE:BTCUSDT 1H or BINANCE:PAXGUSDT 4H).
-3. Check the **Strategy Tester** tab. Adjust *Entry type*, *Stop loss = k x ATR(14)* and *Risk per trade* in the settings.
+3. Check the **Strategy Tester** tab. Adjust *Entry type*, *Pullback trend filter*, *Stop loss = k x ATR(14)* and *Risk per trade* in the settings.
 
 Defaults: initial capital 1,000 USD, commission 0.04% per side, slippage 2 ticks, long only, no pyramiding.
 
@@ -103,17 +103,33 @@ python pullback_test.py       # Breakout vs Pullback, in-sample
 python backtest_main.py       # in-sample 2021 → Sep 2025 statistics + trade lists
 python asset_test.py ../data/paxg_h1.csv ../data/paxg_h4.csv PAXG   # any asset
 python download_binance.py PAXGUSDT 4h ../data/paxg_h4.csv          # fetch closed candles from the Binance public API
+python ema_full_report.py ../data/btc_h1_binance.csv ../data/btc_h4_binance.csv BTC 9 45 [A|B]   # full 1H/4H/1D table for any EMA pair; B = Pullback filter close > EMA200
+python ema_tf_report.py ../data/btc_m15_binance.csv BTC 15m 6.0 9 45 [A|B]                        # same for a single timeframe (e.g. 15m)
+python ema_pair_test.py ../data/btc_h1_binance.csv ../data/btc_h4_binance.csv BTC 9,45 10,50      # compare EMA pairs
+python h4_report.py ../data/btc_h1_binance.csv ../data/btc_h4_binance.csv                         # detailed 4H table
+python fx_fee_check.py                                                                             # EUR/USD and USD/EUR with forex-like fees
 ```
 
 | Folder | Contents |
 |---|---|
-| `data/` | Binance BTC/USDT candles (1H, 4H, 1D) and PAXG/USDT candles (1H, 4H) from 2021; end dates per file are listed in the research notes |
+| `data/` | Binance candles from 2021: BTC/USDT (15m, 1H, 4H, 1D), PAXG/USDT (1H, 4H), EUR/USDT (1H, 4H) and its inverse USD/EUR; `*_binance.csv` files were refreshed in October 2026, end dates per file are listed in the research notes |
 | `scripts/` | Backtest engine and experiments (comments and console output are in Vietnamese) |
 | `results/` | Summary tables and per-trade lists |
 | `tradingview/` | Pine Script strategy |
 | `docs/research-notes-vi.md` | Full research log in Vietnamese: every table, the bugs found and fixed (off-by-one bar, unrealistic fills, stop hit on the entry bar, EMA warm-up, data gaps), and independent verification |
 
 Implementation notes: EMAs use pandas `ewm(adjust=False)` (the Pine script seeds its EMAs the same way); ATR is an EMA of the true range; the data is split into segments at gaps (> 6 h on 1H) and each segment gets its own 200-bar warm-up. Fees are converted to R as `fee × (entry + exit) / stop distance`.
+
+## Further research (October 2026)
+
+Details and full tables are in [`docs/research-notes-vi.md`](docs/research-notes-vi.md) (Vietnamese). All figures after 0.04% fee per side; out-of-sample = trades entered from 1 Oct 2025. Each section uses data downloaded on the date it states, so re-running with newer data gives slightly different numbers.
+
+- **Out-of-sample update, BTC 1H EMA9/45 Breakout 2.5×**: with data to 9 Oct 2026, out-of-sample PF fell to 0.84 (35 trades; 6 of the 7 trades from 27 Sep to 6 Oct lost). Not conclusive for a low-win-rate system, but worth monitoring.
+- **EMA period sensitivity**: results change a lot with small EMA changes. BTC 1H Breakout 2.5× PF: 8/40 1.33, **9/45 1.77**, 10/50 1.33, 11/55 1.26, 12/60 1.42; BTC 4H: 1.08, 1.42, **2.01**, 1.28, 1.35. Every pair is profitable on BTC 1H, so the trend-following edge is real, but the headline PF of the best pair is likely optimistic.
+- **EMA10/50** (`results/ema10_50_*.csv`): best BTC configuration becomes 4H Breakout 2.0× (PF 2.16, 50 trades, only 4 out of sample); gold 4H Breakout 2.0× PF 3.23 and Pullback 3.0× PF 4.28.
+- **15-minute BTC** (`results/ema*_btc_15m.csv`): ~1,000 trades, Breakout 2.5× PF 1.28, Max DD −52R; more total R than 1H only because of the trade count and one +94.5R trade (stop only 0.20% of price). Removing the 5 largest trades leaves PF 1.03; PF 0.99 at 0.1% fees. Not better than 1H.
+- **Pullback filter "close > EMA200"** (`results/ema9_45_locB_*.csv`): better than the stacked filter on BTC 1H (2.5×: +103R vs +79R, same Max DD) and gold 4H (PF 3.6 vs 2.8), worse on BTC 4H, gold 1H and BTC 15m; the extra trades it adds lost out of sample (small samples).
+- **EUR/USD and USD/EUR** (`results/eurusd_*.csv`, `results/usdeur_summary.csv`): no edge even without fees (PF below 1 almost everywhere).
 
 ## License
 

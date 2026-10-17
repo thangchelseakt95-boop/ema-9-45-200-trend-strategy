@@ -1,7 +1,8 @@
 //@version=6
 // EMA9 / EMA45 / EMA200 — Breakout hoặc Pullback V5 (chuyển từ backtest Python của dự án btc-ema-backtest-project)
 // Luật (xem README.md của dự án):
-//   * Lọc xu hướng: EMA9 > EMA45 > EMA200, bỏ qua 200 nến đầu (làm nóng EMA).
+//   * Lọc xu hướng: Breakout cần EMA9 > EMA45 > EMA200. Pullback (mặc định) cần EMA9 > EMA45 và giá đóng cửa > EMA200
+//     (có thể đổi lại EMA9 > EMA45 > EMA200). Bỏ qua 200 nến đầu (làm nóng EMA).
 //   * Breakout: EMA9 cắt lên EMA45 -> lệnh chờ mua (stop) ở đỉnh nến tín hiệu.
 //   * Pullback V5: sau khi cắt lên, nến tín hiệu = nến chạm EMA45 nhưng đóng cửa trên EMA45,
 //     hoặc nến đầu tiên đóng cửa trở lại trên EMA45 sau khi đã đóng cửa dưới EMA45; lệnh chờ ở đỉnh nến đó.
@@ -20,6 +21,8 @@ strategy("EMA9/45/200 Breakout & Pullback V5", overlay = true, initial_capital =
 
 // ---------- Inputs ----------
 mode       = input.string("Breakout", "Kiểu vào lệnh", options = ["Breakout", "Pullback V5"])
+pbFilter   = input.string("Giá > EMA200", "Bộ lọc xu hướng cho Pullback", options = ["Giá > EMA200", "EMA9 > EMA45 > EMA200"],
+             tooltip = "Giá > EMA200: EMA nhanh > EMA chậm và giá đóng cửa trên EMA xu hướng (vào sớm hơn khi xu hướng mới hình thành). EMA9 > EMA45 > EMA200: 3 EMA xếp đúng thứ tự (bộ lọc cũ). Breakout luôn dùng bộ lọc 3 EMA.")
 atrMult    = input.float(2.5, "SL = k x ATR(14)", minval = 0.5, step = 0.5, tooltip = "Khuyến nghị: BTC H1 Breakout 2.5; vàng H4 Breakout 2.0-3.5 hoặc Pullback V5 2.0-2.5")
 riskPct    = input.float(1.0, "Rủi ro mỗi lệnh (% vốn)", minval = 0.1, step = 0.1)
 fastLen    = input.int(9, "EMA nhanh", minval = 1)
@@ -43,7 +46,8 @@ atr  = emaSeed(ta.tr(true), 14)
 up       = e9 > e45
 crossUp  = up and not up[1]
 crossDn  = not up and up[1]
-aligned  = e9 > e45 and e45 > e200 and bar_index >= warmupBars and time >= startDate
+bool trendOK = mode != "Breakout" and pbFilter == "Giá > EMA200" ? close > e200 : e45 > e200
+aligned  = e9 > e45 and trendOK and bar_index >= warmupBars and time >= startDate
 
 // ---------- Trạng thái ----------
 var float pending     = na     // mức chờ mua (đỉnh nến tín hiệu)
